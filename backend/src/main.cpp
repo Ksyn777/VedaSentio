@@ -1,85 +1,134 @@
-#include <mqtt/async_client.h>
+#include "database/Database.h"
+#include "mqtt/MqttClient.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <thread>
-#include <chrono>
 
-constexpr const char* SERVER_ADDRESS = "tcp://127.0.0.1:1883";
-constexpr const char* CLIENT_ID = "vedasentio_backend";
-constexpr const char* TOPIC = "vedasentio/test";
-constexpr int QOS = 1;
-
-class MqttCallback : public virtual mqtt::callback
+namespace
 {
-public:
-    void connection_lost(const std::string& cause) override
+constexpr const char* MQTT_SERVER_ADDRESS = "tcp://127.0.0.1:1883";
+constexpr const char* MQTT_CLIENT_ID = "vedasentio_backend";
+constexpr const char* MQTT_TOPIC = "vedasentio/test";
+constexpr int MQTT_QOS = 1;
+
+std::string require_env(const char* name)
+{
+    const char* value = std::getenv(name);
+
+    if (value == nullptr || *value == '\0')
     {
-        std::cerr << "[MQTT] Connection lost";
-
-        if (!cause.empty())
-            std::cerr << ": " << cause;
-
-        std::cerr << std::endl;
+        throw std::runtime_error(
+            std::string("Missing required environment variable: ") + name
+        );
     }
 
-    void message_arrived(mqtt::const_message_ptr msg) override
+    return value;
+}
+
+std::string quote_conninfo_value(const std::string& value)
+{
+    std::string result;
+    result.reserve(value.size() + 2);
+    result.push_back('\'');
+
+    for (char ch : value)
     {
-        std::cout << "\n[MQTT] Message received\n";
-        std::cout << "Topic:   " << msg->get_topic() << '\n';
-        std::cout << "Message: " << msg->to_string() << '\n';
+        if (ch == '\\' || ch == '\'')
+        {
+            result.push_back('\\');
+        }
+
+        result.push_back(ch);
     }
-};
+
+    result.push_back('\'');
+    return result;
+}
+
+std::string build_database_connection_string()
+{
+    const std::string host =
+        require_env("VEDASENTIO_DB_HOST");
+
+    const std::string port =
+        require_env("VEDASENTIO_DB_PORT");
+
+    const std::string database =
+        require_env("VEDASENTIO_DB_NAME");
+
+    const std::string user =
+        require_env("VEDASENTIO_DB_USER");
+
+    const std::string password =
+        require_env("VEDASENTIO_DB_PASSWORD");
+
+    return
+        "host=" + quote_conninfo_value(host) +
+        " port=" + quote_conninfo_value(port) +
+        " dbname=" + quote_conninfo_value(database) +
+        " user=" + quote_conninfo_value(user) +
+        " password=" + quote_conninfo_value(password);
+}
+}
 
 int main()
 {
-    const char* username = std::getenv("VEDASENTIO_MQTT_USER");
-    const char* password = std::getenv("VEDASENTIO_MQTT_PASSWORD");
-
-    if (!username || !password)
-    {
-        std::cerr
-            << "Missing VEDASENTIO_MQTT_USER or "
-            << "VEDASENTIO_MQTT_PASSWORD environment variable.\n";
-
-        return 1;
-    }
-
     try
     {
-        mqtt::async_client client(SERVER_ADDRESS, CLIENT_ID);
-
-        MqttCallback callback;
-        client.set_callback(callback);
-
-        auto connectionOptions =
-            mqtt::connect_options_builder()
-                .user_name(username)
-                .password(password)
-                .clean_session(true)
-                .finalize();
-
         std::cout << "[VedaSentio] Backend starting...\n";
-        std::cout << "[MQTT] Connecting to " << SERVER_ADDRESS << "...\n";
 
-        client.connect(connectionOptions)->wait();
+        const std::string mqtt_username =
+            require_env("VEDASENTIO_MQTT_USER");
 
-        std::cout << "[MQTT] Connected.\n";
+        const std::string mqtt_password =
+            require_env("VEDASENTIO_MQTT_PASSWORD");
 
-        client.subscribe(TOPIC, QOS)->wait();
+        const std::string database_connection_string =
+            build_database_connection_string();
 
-        std::cout << "[MQTT] Subscribed: " << TOPIC << '\n';
+        Database database(database_connection_string);
+        database.test_connection();
+
+        MqttClient mqtt_client(
+            MQTT_SERVER_ADDRESS,
+            MQTT_CLIENT_ID,
+            MQTT_TOPIC,
+            MQTT_QOS,
+            database
+        );
+
+        mqtt_client.start(
+            mqtt_username,
+            mqtt_password
+        );
+
         std::cout << "[VedaSentio] Waiting for messages...\n";
 
         while (true)
         {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::this_thread::sleep_for(
+                std::chrono::seconds(1)
+            );
         }
     }
     catch (const mqtt::exception& error)
     {
-        std::cerr << "[MQTT] Error: " << error.what() << '\n';
+        std::cerr << "[MQTT] Error: "
+                  << error.what()
+                  << '\n';
+
+        return 1;
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "[VedaSentio] Error: "
+                  << error.what()
+                  << '\n';
+
         return 1;
     }
 }

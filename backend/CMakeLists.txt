@@ -8,9 +8,12 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(PahoMqttCpp CONFIG REQUIRED)
+find_package(libpqxx CONFIG REQUIRED)
 
 add_executable(vedasentio_backend
     src/main.cpp
+    src/database/Database.cpp
+    src/mqtt/MqttClient.cpp
 )
 
 target_compile_definitions(vedasentio_backend
@@ -18,7 +21,13 @@ target_compile_definitions(vedasentio_backend
     PAHO_MQTTPP_IMPORTS
 )
 
+target_include_directories(vedasentio_backend
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 target_link_libraries(vedasentio_backend
     PRIVATE
     PahoMqttCpp::paho-mqttpp3-shared
+    libpqxx::pqxx
 )

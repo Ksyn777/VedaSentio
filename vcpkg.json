@@ -2,7 +2,8 @@
   "name": "vedasentio",
   "version-string": "0.1.0",
   "dependencies": [
-    "paho-mqttpp3"
+    "paho-mqttpp3",
+    "libpqxx"
   ],
   "builtin-baseline": "4cb050be2cfa7a947cdd2dd1a70e24b17774c979"
 }
