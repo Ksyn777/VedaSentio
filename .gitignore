@@ -21,3 +21,13 @@ mobile/build/
 # OS
 Thumbs.db
 .DS_Store
+
+.vs/
+
+# Mosquitto secrets/runtime data
+infrastructure/mosquitto/config/passwords
+infrastructure/mosquitto/data/
+infrastructure/mosquitto/log/
+
+# Visual Studio
+.vs/
