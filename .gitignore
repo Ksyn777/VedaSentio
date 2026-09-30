@@ -1,0 +1,23 @@
+# Secrets
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# C++
+backend/build/
+
+# Python
+__pycache__/
+*.pyc
+analytics/.venv/
+simulator/.venv/
+
+# Flutter
+mobile/.dart_tool/
+mobile/build/
+
+# OS
+Thumbs.db
+.DS_Store
