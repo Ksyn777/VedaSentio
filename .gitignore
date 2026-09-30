@@ -31,3 +31,5 @@ infrastructure/mosquitto/log/
 
 # Visual Studio
 .vs/
+
+vcpkg_installed/
