@@ -146,7 +146,7 @@ std::string CryptoService::encode_base64(
 }
 
 std::string CryptoService::decode_base64(
-    std::string_view encoded
+    const std::string& encoded
 )
 {
     std::vector<unsigned char> decoded(
@@ -158,7 +158,7 @@ std::string CryptoService::decode_base64(
     const int result = sodium_base642bin(
         decoded.data(),
         decoded.size(),
-        encoded.data(),
+        encoded.c_str(),
         encoded.size(),
         nullptr,
         &decoded_size,
@@ -184,8 +184,8 @@ std::string CryptoService::decode_base64(
 }
 
 std::string CryptoService::encrypt_field(
-    std::string_view plaintext,
-    std::string_view context
+    const std::string& plaintext,
+    const std::string& context
 ) const
 {
     std::array<
@@ -246,7 +246,9 @@ std::string CryptoService::encrypt_field(
         ciphertext.size()
     );
 
-    packed.push_back(FORMAT_VERSION);
+    packed.push_back(
+        FORMAT_VERSION
+    );
 
     packed.insert(
         packed.end(),
@@ -267,8 +269,8 @@ std::string CryptoService::encrypt_field(
 }
 
 std::string CryptoService::decrypt_field(
-    std::string_view encrypted_value_b64,
-    std::string_view context
+    const std::string& encrypted_value_b64,
+    const std::string& context
 ) const
 {
     const std::string packed_string =
@@ -362,7 +364,7 @@ std::string CryptoService::decrypt_field(
 }
 
 std::string CryptoService::lookup_hmac_hex(
-    std::string_view normalized_value
+    const std::string& normalized_value
 ) const
 {
     std::array<

@@ -2,7 +2,6 @@
 
 #include <array>
 #include <string>
-#include <string_view>
 
 #include <sodium.h>
 
@@ -22,17 +21,17 @@ public:
     CryptoService& operator=(CryptoService&&) = delete;
 
     std::string encrypt_field(
-        std::string_view plaintext,
-        std::string_view context
+        const std::string& plaintext,
+        const std::string& context
     ) const;
 
     std::string decrypt_field(
-        std::string_view encrypted_value_b64,
-        std::string_view context
+        const std::string& encrypted_value_b64,
+        const std::string& context
     ) const;
 
     std::string lookup_hmac_hex(
-        std::string_view normalized_value
+        const std::string& normalized_value
     ) const;
 
 private:
@@ -48,7 +47,7 @@ private:
     );
 
     static std::string decode_base64(
-        std::string_view encoded
+        const std::string& encoded
     );
 
     std::array<

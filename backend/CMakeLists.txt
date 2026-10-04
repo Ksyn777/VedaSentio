@@ -34,6 +34,47 @@ target_link_libraries(
     unofficial-sodium::sodium
 )
 
+# Password hashing is kept in its own target.
+# This prevents libpqxx usage requirements from leaking into
+# PasswordHasher.cpp on MSVC/libpqxx builds.
+add_library(
+    vedasentio_auth
+    STATIC
+    src/auth/PasswordHasher.cpp
+)
+
+target_include_directories(
+    vedasentio_auth
+    PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(
+    vedasentio_auth
+    PUBLIC
+    unofficial-sodium::sodium
+)
+
+add_library(
+    vedasentio_identity
+    STATIC
+    src/users/UserRepository.cpp
+)
+
+target_include_directories(
+    vedasentio_identity
+    PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(
+    vedasentio_identity
+    PUBLIC
+    vedasentio_security
+    vedasentio_auth
+    libpqxx::pqxx
+)
+
 add_executable(
     vedasentio_backend
     src/main.cpp
@@ -73,4 +114,17 @@ target_link_libraries(
     vedasentio_crypto_test
     PRIVATE
     vedasentio_security
+)
+
+add_executable(
+    vedasentio_user_security_test
+    tools/user_security_test.cpp
+)
+
+# libpqxx is already a PUBLIC dependency of vedasentio_identity,
+# so it must not be added redundantly here.
+target_link_libraries(
+    vedasentio_user_security_test
+    PRIVATE
+    vedasentio_identity
 )
