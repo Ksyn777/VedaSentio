@@ -36,8 +36,15 @@ $payload = Get-Content `
     -Raw |
     ConvertFrom-Json
 
-if ($payload.version -ne 1) {
-    throw "Unsupported development secret format."
+if (
+    -not $payload.data_encryption_key -or
+    -not $payload.lookup_hmac_key
+) {
+    throw "Development secret file is invalid."
+}
+
+if (-not $payload.jwt_signing_key) {
+    throw "JWT signing key is missing. Run .\scripts\setup_dev_crypto_secrets.ps1 once to upgrade the development secret file."
 }
 
 $env:VEDASENTIO_DATA_ENCRYPTION_KEY_B64 =
@@ -46,7 +53,10 @@ $env:VEDASENTIO_DATA_ENCRYPTION_KEY_B64 =
 $env:VEDASENTIO_LOOKUP_HMAC_KEY_B64 =
     Unprotect-Text $payload.lookup_hmac_key
 
+$env:VEDASENTIO_JWT_SIGNING_KEY_B64 =
+    Unprotect-Text $payload.jwt_signing_key
+
 Write-Host ""
-Write-Host "[SECRETS] Development crypto keys loaded into this PowerShell process."
+Write-Host "[SECRETS] Development encryption and JWT keys loaded into this PowerShell process."
 Write-Host "[SECRETS] Values were not printed."
 Write-Host ""

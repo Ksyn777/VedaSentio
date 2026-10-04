@@ -40,15 +40,28 @@ function Protect-Text {
         -SecureString $secure
 }
 
-if ((Test-Path $secretFile) -and (-not $ForceRotate)) {
-    Write-Host "[SECRETS] Existing protected development keys found."
-    Write-Host "[SECRETS] Nothing was changed."
-    Write-Host "[SECRETS] Use .\scripts\load_dev_crypto_secrets.ps1 to load them."
-    exit 0
-}
+function Unprotect-Text {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$ProtectedText
+    )
 
-if ($ForceRotate -and (Test-Path $secretFile)) {
-    Write-Warning "Rotating keys makes data encrypted with the previous keys unreadable unless it is re-encrypted first."
+    $secure = ConvertTo-SecureString $ProtectedText
+
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR(
+        $secure
+    )
+
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR(
+            $pointer
+        )
+    }
+    finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR(
+            $pointer
+        )
+    }
 }
 
 New-Item `
@@ -57,32 +70,132 @@ New-Item `
     -Path $secretDirectory |
     Out-Null
 
-$dataKey = New-RandomBase64Key
-$lookupKey = New-RandomBase64Key
+if ($ForceRotate) {
+    if (Test-Path $secretFile) {
+        Write-Warning "Rotating encryption keys makes existing encrypted development data unreadable unless it is re-encrypted first."
+    }
 
-$payload = [ordered]@{
-    version = 1
-    data_encryption_key = Protect-Text $dataKey
-    lookup_hmac_key = Protect-Text $lookupKey
+    $dataKey = New-RandomBase64Key
+    $lookupKey = New-RandomBase64Key
+    $jwtKey = New-RandomBase64Key
+
+    $payload = [ordered]@{
+        version = 2
+        data_encryption_key = Protect-Text $dataKey
+        lookup_hmac_key = Protect-Text $lookupKey
+        jwt_signing_key = Protect-Text $jwtKey
+    }
+
+    $payload |
+        ConvertTo-Json |
+        Set-Content `
+            -Path $secretFile `
+            -Encoding UTF8
+
+    $env:VEDASENTIO_DATA_ENCRYPTION_KEY_B64 = $dataKey
+    $env:VEDASENTIO_LOOKUP_HMAC_KEY_B64 = $lookupKey
+    $env:VEDASENTIO_JWT_SIGNING_KEY_B64 = $jwtKey
+
+    $dataKey = $null
+    $lookupKey = $null
+    $jwtKey = $null
+
+    Write-Host ""
+    Write-Host "[SECRETS] Development encryption and JWT keys rotated."
+    Write-Host "[SECRETS] Secret values were not printed."
+    Write-Host ""
+
+    exit 0
 }
 
-$payload |
-    ConvertTo-Json |
-    Set-Content `
-        -Path $secretFile `
-        -Encoding UTF8
+if (-not (Test-Path $secretFile)) {
+    $dataKey = New-RandomBase64Key
+    $lookupKey = New-RandomBase64Key
+    $jwtKey = New-RandomBase64Key
+
+    $payload = [ordered]@{
+        version = 2
+        data_encryption_key = Protect-Text $dataKey
+        lookup_hmac_key = Protect-Text $lookupKey
+        jwt_signing_key = Protect-Text $jwtKey
+    }
+
+    $payload |
+        ConvertTo-Json |
+        Set-Content `
+            -Path $secretFile `
+            -Encoding UTF8
+
+    $env:VEDASENTIO_DATA_ENCRYPTION_KEY_B64 = $dataKey
+    $env:VEDASENTIO_LOOKUP_HMAC_KEY_B64 = $lookupKey
+    $env:VEDASENTIO_JWT_SIGNING_KEY_B64 = $jwtKey
+
+    $dataKey = $null
+    $lookupKey = $null
+    $jwtKey = $null
+
+    Write-Host ""
+    Write-Host "[SECRETS] Development encryption and JWT keys created."
+    Write-Host "[SECRETS] Protected with Windows DPAPI for the current Windows user."
+    Write-Host "[SECRETS] Stored outside the repository:"
+    Write-Host "[SECRETS] $secretFile"
+    Write-Host "[SECRETS] Secret values were not printed."
+    Write-Host ""
+
+    exit 0
+}
+
+$existing = Get-Content `
+    -Path $secretFile `
+    -Raw |
+    ConvertFrom-Json
+
+if (
+    -not $existing.data_encryption_key -or
+    -not $existing.lookup_hmac_key
+) {
+    throw "Existing secret file is invalid."
+}
+
+$dataKey = Unprotect-Text $existing.data_encryption_key
+$lookupKey = Unprotect-Text $existing.lookup_hmac_key
+
+if (-not $existing.jwt_signing_key) {
+    $jwtKey = New-RandomBase64Key
+
+    $payload = [ordered]@{
+        version = 2
+        data_encryption_key = $existing.data_encryption_key
+        lookup_hmac_key = $existing.lookup_hmac_key
+        jwt_signing_key = Protect-Text $jwtKey
+    }
+
+    $payload |
+        ConvertTo-Json |
+        Set-Content `
+            -Path $secretFile `
+            -Encoding UTF8
+
+    Write-Host ""
+    Write-Host "[SECRETS] Existing development encryption keys preserved."
+    Write-Host "[SECRETS] A new JWT signing key was added."
+}
+else {
+    $jwtKey = Unprotect-Text $existing.jwt_signing_key
+
+    Write-Host ""
+    Write-Host "[SECRETS] Existing development encryption and JWT keys found."
+    Write-Host "[SECRETS] No keys were rotated."
+}
 
 $env:VEDASENTIO_DATA_ENCRYPTION_KEY_B64 = $dataKey
 $env:VEDASENTIO_LOOKUP_HMAC_KEY_B64 = $lookupKey
+$env:VEDASENTIO_JWT_SIGNING_KEY_B64 = $jwtKey
 
 $dataKey = $null
 $lookupKey = $null
+$jwtKey = $null
 
-Write-Host ""
-Write-Host "[SECRETS] Development crypto keys created."
-Write-Host "[SECRETS] Protected with Windows DPAPI for the current Windows user."
-Write-Host "[SECRETS] Stored outside the repository:"
-Write-Host "[SECRETS] $secretFile"
-Write-Host "[SECRETS] Keys were also loaded into this PowerShell process."
+Write-Host "[SECRETS] Keys loaded into this PowerShell process."
 Write-Host "[SECRETS] Secret values were not printed."
 Write-Host ""

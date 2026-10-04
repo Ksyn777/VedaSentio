@@ -1,22 +1,95 @@
 #include "ApiServer.h"
+
+#include "../auth/JwtService.h"
 #include "../database/Database.h"
+#include "../model/User.h"
+#include "../users/UserRepository.h"
+
 #include <httplib.h>
 #include <nlohmann/json.hpp>
-#include <iostream>
-#include <string>
 
-namespace {
-void send_json(httplib::Response& response, const nlohmann::json& body, int status = 200)
+#include <iostream>
+#include <optional>
+#include <string>
+#include <unordered_map>
+
+namespace
 {
-    response.status = status;
-    response.set_content(body.dump(2), "application/json; charset=utf-8");
+constexpr long long ACCESS_TOKEN_LIFETIME_SECONDS =
+    3600;
+
+void apply_security_headers(
+    httplib::Response& response
+)
+{
+    response.set_header(
+        "Cache-Control",
+        "no-store"
+    );
+
+    response.set_header(
+        "Pragma",
+        "no-cache"
+    );
+
+    response.set_header(
+        "X-Content-Type-Options",
+        "nosniff"
+    );
 }
 
-nlohmann::json event_to_json(const EventRecord& event)
+void send_json(
+    httplib::Response& response,
+    const nlohmann::json& body,
+    int status = 200
+)
+{
+    response.status =
+        status;
+
+    apply_security_headers(
+        response
+    );
+
+    response.set_content(
+        body.dump(2),
+        "application/json; charset=utf-8"
+    );
+}
+
+nlohmann::json user_to_json(
+    const User& user
+)
+{
+    return {
+        {"id", user.id},
+        {"email", user.email},
+        {"first_name", user.first_name},
+        {"last_name", user.last_name},
+        {"phone", user.phone},
+        {"is_active", user.is_active},
+        {"created_at", user.created_at}
+    };
+}
+
+nlohmann::json event_to_json(
+    const EventRecord& event
+)
 {
     nlohmann::json value;
-    try { value = nlohmann::json::parse(event.value_json); }
-    catch (...) { value = event.value_json; }
+
+    try
+    {
+        value =
+            nlohmann::json::parse(
+                event.value_json
+            );
+    }
+    catch (...)
+    {
+        value =
+            event.value_json;
+    }
 
     return {
         {"id", event.id},
@@ -28,92 +101,819 @@ nlohmann::json event_to_json(const EventRecord& event)
         {"received_at", event.received_at}
     };
 }
+
+std::optional<std::string> bearer_token(
+    const httplib::Request& request
+)
+{
+    const std::string authorization =
+        request.get_header_value(
+            "Authorization"
+        );
+
+    constexpr const char* prefix =
+        "Bearer ";
+
+    const std::string prefix_string =
+        prefix;
+
+    if (
+        authorization.size() <=
+            prefix_string.size() ||
+        authorization.compare(
+            0,
+            prefix_string.size(),
+            prefix_string
+        ) != 0
+    )
+    {
+        return std::nullopt;
+    }
+
+    const std::string token =
+        authorization.substr(
+            prefix_string.size()
+        );
+
+    if (token.empty())
+    {
+        return std::nullopt;
+    }
+
+    return token;
 }
 
-ApiServer::ApiServer(Database& database) : database_(database) {}
+std::optional<User> authenticated_user(
+    const httplib::Request& request,
+    httplib::Response& response,
+    UserRepository& users,
+    JwtService& jwt
+)
+{
+    const auto token =
+        bearer_token(request);
 
-void ApiServer::start(const std::string& host, int port)
+    if (!token.has_value())
+    {
+        response.set_header(
+            "WWW-Authenticate",
+            "Bearer"
+        );
+
+        send_json(
+            response,
+            {
+                {"error", "Authentication required."}
+            },
+            401
+        );
+
+        return std::nullopt;
+    }
+
+    try
+    {
+        const JwtClaims claims =
+            jwt.verify_access_token(
+                *token
+            );
+
+        const auto user =
+            users.get_by_id(
+                claims.user_id
+            );
+
+        if (
+            !user.has_value() ||
+            !user->is_active
+        )
+        {
+            response.set_header(
+                "WWW-Authenticate",
+                "Bearer"
+            );
+
+            send_json(
+                response,
+                {
+                    {"error", "Invalid authentication token."}
+                },
+                401
+            );
+
+            return std::nullopt;
+        }
+
+        return user;
+    }
+    catch (...)
+    {
+        response.set_header(
+            "WWW-Authenticate",
+            "Bearer"
+        );
+
+        send_json(
+            response,
+            {
+                {"error", "Invalid or expired authentication token."}
+            },
+            401
+        );
+
+        return std::nullopt;
+    }
+}
+
+bool require_home_access(
+    const User& user,
+    const std::string& home_id,
+    httplib::Response& response,
+    UserRepository& users
+)
+{
+    if (
+        users.has_home_access(
+            user.id,
+            home_id
+        )
+    )
+    {
+        return true;
+    }
+
+    send_json(
+        response,
+        {
+            {"error", "Access denied."}
+        },
+        403
+    );
+
+    return false;
+}
+}
+
+ApiServer::ApiServer(
+    Database& database,
+    UserRepository& users,
+    JwtService& jwt
+)
+    : database_(database),
+      users_(users),
+      jwt_(jwt)
+{
+}
+
+void ApiServer::start(
+    const std::string& host,
+    int port
+)
 {
     httplib::Server server;
 
-    server.Get("/api/health", [](const httplib::Request&, httplib::Response& response) {
-        send_json(response, {{"status", "ok"}, {"service", "vedasentio-backend"}});
-    });
-
-    server.Get("/api/homes", [this](const httplib::Request&, httplib::Response& response) {
-        try {
-            nlohmann::json body = nlohmann::json::array();
-            for (const auto& home : database_.get_homes()) {
-                body.push_back({{"id", home.id}, {"name", home.name}, {"created_at", home.created_at}});
-            }
-            send_json(response, body);
-        } catch (const std::exception& error) {
-            send_json(response, {{"error", error.what()}}, 500);
-        }
-    });
-
-    server.Get(R"(/api/homes/([^/]+)/devices)",
-        [this](const httplib::Request& request, httplib::Response& response) {
-            try {
-                const std::string home_id = request.matches[1];
-                nlohmann::json body = nlohmann::json::array();
-                for (const auto& device : database_.get_devices(home_id)) {
-                    body.push_back({
-                        {"home_id", device.home_id},
-                        {"id", device.id},
-                        {"device_type", device.device_type},
-                        {"name", device.name},
-                        {"is_active", device.is_active},
-                        {"created_at", device.created_at}
-                    });
+    server.Get(
+        "/api/health",
+        [](
+            const httplib::Request&,
+            httplib::Response& response
+        )
+        {
+            send_json(
+                response,
+                {
+                    {"status", "ok"},
+                    {"service", "vedasentio-backend"}
                 }
-                send_json(response, body);
-            } catch (const std::exception& error) {
-                send_json(response, {{"error", error.what()}}, 500);
-            }
-        });
+            );
+        }
+    );
 
-    server.Get(R"(/api/homes/([^/]+)/events)",
-        [this](const httplib::Request& request, httplib::Response& response) {
-            try {
-                const std::string home_id = request.matches[1];
+    server.Post(
+        "/api/auth/login",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            try
+            {
+                if (request.body.size() > 8192)
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "Request body is too large."}
+                        },
+                        413
+                    );
+
+                    return;
+                }
+
+                nlohmann::json body;
+
+                try
+                {
+                    body =
+                        nlohmann::json::parse(
+                            request.body
+                        );
+                }
+                catch (...)
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "Invalid JSON body."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                if (
+                    !body.contains("email") ||
+                    !body["email"].is_string() ||
+                    !body.contains("password") ||
+                    !body["password"].is_string()
+                )
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "E-mail and password are required."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                const std::string email =
+                    body["email"]
+                        .get<std::string>();
+
+                const std::string password =
+                    body["password"]
+                        .get<std::string>();
+
+                if (
+                    email.empty() ||
+                    email.size() > 320 ||
+                    email.find('@') == std::string::npos ||
+                    password.empty() ||
+                    password.size() > 1024
+                )
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "Invalid credentials."}
+                        },
+                        401
+                    );
+
+                    return;
+                }
+
+                const std::optional<User> user =
+                    users_.authenticate(
+                        email,
+                        password
+                    );
+
+                if (!user.has_value())
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "Invalid credentials."}
+                        },
+                        401
+                    );
+
+                    return;
+                }
+
+                const std::string token =
+                    jwt_.create_access_token(
+                        user->id,
+                        ACCESS_TOKEN_LIFETIME_SECONDS
+                    );
+
+                send_json(
+                    response,
+                    {
+                        {
+                            "access_token",
+                            token
+                        },
+                        {
+                            "token_type",
+                            "Bearer"
+                        },
+                        {
+                            "expires_in",
+                            ACCESS_TOKEN_LIFETIME_SECONDS
+                        },
+                        {
+                            "user",
+                            user_to_json(*user)
+                        }
+                    }
+                );
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr
+                    << "[API] Login error: "
+                    << error.what()
+                    << '\n';
+
+                send_json(
+                    response,
+                    {
+                        {"error", "Authentication service error."}
+                    },
+                    500
+                );
+            }
+        }
+    );
+
+    server.Get(
+        "/api/me",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user =
+                authenticated_user(
+                    request,
+                    response,
+                    users_,
+                    jwt_
+                );
+
+            if (!user.has_value())
+            {
+                return;
+            }
+
+            try
+            {
+                nlohmann::json memberships =
+                    nlohmann::json::array();
+
+                for (
+                    const auto& membership :
+                    users_.get_home_memberships(
+                        user->id
+                    )
+                )
+                {
+                    memberships.push_back(
+                        {
+                            {
+                                "home_id",
+                                membership.home_id
+                            },
+                            {
+                                "role",
+                                membership.role
+                            }
+                        }
+                    );
+                }
+
+                nlohmann::json body =
+                    user_to_json(*user);
+
+                body["homes"] =
+                    memberships;
+
+                send_json(
+                    response,
+                    body
+                );
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr
+                    << "[API] /api/me error: "
+                    << error.what()
+                    << '\n';
+
+                send_json(
+                    response,
+                    {
+                        {"error", "Unable to load user profile."}
+                    },
+                    500
+                );
+            }
+        }
+    );
+
+    server.Get(
+        "/api/homes",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user =
+                authenticated_user(
+                    request,
+                    response,
+                    users_,
+                    jwt_
+                );
+
+            if (!user.has_value())
+            {
+                return;
+            }
+
+            try
+            {
+                std::unordered_map<
+                    std::string,
+                    std::string
+                > role_by_home;
+
+                for (
+                    const auto& membership :
+                    users_.get_home_memberships(
+                        user->id
+                    )
+                )
+                {
+                    role_by_home[
+                        membership.home_id
+                    ] =
+                        membership.role;
+                }
+
+                nlohmann::json body =
+                    nlohmann::json::array();
+
+                for (
+                    const auto& home :
+                    database_.get_homes()
+                )
+                {
+                    const auto role =
+                        role_by_home.find(
+                            home.id
+                        );
+
+                    if (
+                        role ==
+                        role_by_home.end()
+                    )
+                    {
+                        continue;
+                    }
+
+                    body.push_back(
+                        {
+                            {"id", home.id},
+                            {"name", home.name},
+                            {"role", role->second},
+                            {
+                                "created_at",
+                                home.created_at
+                            }
+                        }
+                    );
+                }
+
+                send_json(
+                    response,
+                    body
+                );
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr
+                    << "[API] /api/homes error: "
+                    << error.what()
+                    << '\n';
+
+                send_json(
+                    response,
+                    {
+                        {"error", "Unable to load homes."}
+                    },
+                    500
+                );
+            }
+        }
+    );
+
+    server.Get(
+        R"(/api/homes/([^/]+)/devices)",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user =
+                authenticated_user(
+                    request,
+                    response,
+                    users_,
+                    jwt_
+                );
+
+            if (!user.has_value())
+            {
+                return;
+            }
+
+            try
+            {
+                const std::string home_id =
+                    request.matches[1];
+
+                if (
+                    !require_home_access(
+                        *user,
+                        home_id,
+                        response,
+                        users_
+                    )
+                )
+                {
+                    return;
+                }
+
+                nlohmann::json body =
+                    nlohmann::json::array();
+
+                for (
+                    const auto& device :
+                    database_.get_devices(
+                        home_id
+                    )
+                )
+                {
+                    body.push_back(
+                        {
+                            {
+                                "home_id",
+                                device.home_id
+                            },
+                            {
+                                "id",
+                                device.id
+                            },
+                            {
+                                "device_type",
+                                device.device_type
+                            },
+                            {
+                                "name",
+                                device.name
+                            },
+                            {
+                                "is_active",
+                                device.is_active
+                            },
+                            {
+                                "created_at",
+                                device.created_at
+                            }
+                        }
+                    );
+                }
+
+                send_json(
+                    response,
+                    body
+                );
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr
+                    << "[API] devices error: "
+                    << error.what()
+                    << '\n';
+
+                send_json(
+                    response,
+                    {
+                        {"error", "Unable to load devices."}
+                    },
+                    500
+                );
+            }
+        }
+    );
+
+    server.Get(
+        R"(/api/homes/([^/]+)/events)",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user =
+                authenticated_user(
+                    request,
+                    response,
+                    users_,
+                    jwt_
+                );
+
+            if (!user.has_value())
+            {
+                return;
+            }
+
+            try
+            {
+                const std::string home_id =
+                    request.matches[1];
+
+                if (
+                    !require_home_access(
+                        *user,
+                        home_id,
+                        response,
+                        users_
+                    )
+                )
+                {
+                    return;
+                }
+
                 int limit = 100;
-                if (request.has_param("limit")) {
-                    try { limit = std::stoi(request.get_param_value("limit")); }
-                    catch (...) {
-                        send_json(response, {{"error", "Invalid limit parameter."}}, 400);
+
+                if (
+                    request.has_param(
+                        "limit"
+                    )
+                )
+                {
+                    try
+                    {
+                        limit =
+                            std::stoi(
+                                request.get_param_value(
+                                    "limit"
+                                )
+                            );
+                    }
+                    catch (...)
+                    {
+                        send_json(
+                            response,
+                            {
+                                {"error", "Invalid limit parameter."}
+                            },
+                            400
+                        );
+
                         return;
                     }
                 }
-                nlohmann::json body = nlohmann::json::array();
-                for (const auto& event : database_.get_events(home_id, limit)) {
-                    body.push_back(event_to_json(event));
-                }
-                send_json(response, body);
-            } catch (const std::exception& error) {
-                send_json(response, {{"error", error.what()}}, 500);
-            }
-        });
 
-    server.Get(R"(/api/homes/([^/]+)/devices/([^/]+)/latest)",
-        [this](const httplib::Request& request, httplib::Response& response) {
-            try {
-                const std::string home_id = request.matches[1];
-                const std::string device_id = request.matches[2];
-                const auto event = database_.get_latest_event(home_id, device_id);
-                if (!event.has_value()) {
-                    send_json(response, {{"error", "No event found."}}, 404);
+                nlohmann::json body =
+                    nlohmann::json::array();
+
+                for (
+                    const auto& event :
+                    database_.get_events(
+                        home_id,
+                        limit
+                    )
+                )
+                {
+                    body.push_back(
+                        event_to_json(event)
+                    );
+                }
+
+                send_json(
+                    response,
+                    body
+                );
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr
+                    << "[API] events error: "
+                    << error.what()
+                    << '\n';
+
+                send_json(
+                    response,
+                    {
+                        {"error", "Unable to load events."}
+                    },
+                    500
+                );
+            }
+        }
+    );
+
+    server.Get(
+        R"(/api/homes/([^/]+)/devices/([^/]+)/latest)",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user =
+                authenticated_user(
+                    request,
+                    response,
+                    users_,
+                    jwt_
+                );
+
+            if (!user.has_value())
+            {
+                return;
+            }
+
+            try
+            {
+                const std::string home_id =
+                    request.matches[1];
+
+                const std::string device_id =
+                    request.matches[2];
+
+                if (
+                    !require_home_access(
+                        *user,
+                        home_id,
+                        response,
+                        users_
+                    )
+                )
+                {
                     return;
                 }
-                send_json(response, event_to_json(*event));
-            } catch (const std::exception& error) {
-                send_json(response, {{"error", error.what()}}, 500);
+
+                const auto event =
+                    database_.get_latest_event(
+                        home_id,
+                        device_id
+                    );
+
+                if (!event.has_value())
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "No event found."}
+                        },
+                        404
+                    );
+
+                    return;
+                }
+
+                send_json(
+                    response,
+                    event_to_json(*event)
+                );
             }
-        });
+            catch (const std::exception& error)
+            {
+                std::cerr
+                    << "[API] latest event error: "
+                    << error.what()
+                    << '\n';
 
-    std::cout << "[API] Listening on http://" << host << ":" << port << '\n';
+                send_json(
+                    response,
+                    {
+                        {"error", "Unable to load latest event."}
+                    },
+                    500
+                );
+            }
+        }
+    );
 
-    if (!server.listen(host, port)) {
-        std::cerr << "[API] Failed to start HTTP server.\n";
+    std::cout
+        << "[API] Listening on http://"
+        << host
+        << ":"
+        << port
+        << '\n';
+
+    if (!server.listen(host, port))
+    {
+        std::cerr
+            << "[API] Failed to start HTTP server.\n";
     }
 }
