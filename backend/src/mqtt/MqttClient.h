@@ -12,7 +12,7 @@ public:
     MqttClient(
         std::string server_address,
         std::string client_id,
-        std::string topic,
+        std::string topic_filter,
         int qos,
         Database& database
     );
@@ -30,9 +30,8 @@ public:
 
 private:
     std::string server_address_;
-    std::string topic_;
+    std::string topic_filter_;
     int qos_;
-
     Database& database_;
     mqtt::async_client client_;
 };

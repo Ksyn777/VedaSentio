@@ -33,3 +33,5 @@ infrastructure/mosquitto/log/
 .vs/
 
 vcpkg_installed/
+
+wlaczenie.txt
