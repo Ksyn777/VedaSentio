@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../models/device.dart';
 import '../models/home.dart';
 import '../models/home_details_data.dart';
+import '../models/home_safety_status.dart';
 import '../models/sensor_event.dart';
 import '../services/api_exception.dart';
 import '../services/auth_service.dart';
+import '../services/home_safety_evaluator.dart';
 import '../utils/date_time_formatter.dart';
 
 class HomeDetailsScreen extends StatefulWidget {
@@ -18,7 +20,8 @@ class HomeDetailsScreen extends StatefulWidget {
 
   final Home home;
   final AuthService authService;
-  final Future<void> Function() onSessionExpired;
+  final Future<void> Function()
+      onSessionExpired;
 
   @override
   State<HomeDetailsScreen> createState() =>
@@ -113,9 +116,13 @@ class _HomeDetailsScreenState
     };
   }
 
-  IconData _eventIcon(SensorEvent event) {
+  IconData _eventIcon(
+    SensorEvent event,
+  ) {
     return switch (event.eventType) {
       'sos_pressed' => Icons.sos,
+      'sos_resolved' =>
+        Icons.check_circle_outline,
       'door_opened' =>
         Icons.door_front_door_outlined,
       'door_closed' =>
@@ -140,8 +147,10 @@ class _HomeDetailsScreenState
         actions: [
           IconButton(
             tooltip: 'Odśwież',
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
+            onPressed:
+                _loading ? null : _load,
+            icon:
+                const Icon(Icons.refresh),
           ),
         ],
       ),
@@ -154,7 +163,9 @@ class _HomeDetailsScreenState
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody(
+    BuildContext context,
+  ) {
     if (_loading && _data == null) {
       return ListView(
         physics:
@@ -163,25 +174,30 @@ class _HomeDetailsScreenState
           SizedBox(
             height: 320,
             child: Center(
-              child: CircularProgressIndicator(),
+              child:
+                  CircularProgressIndicator(),
             ),
           ),
         ],
       );
     }
 
-    if (_errorMessage != null && _data == null) {
+    if (_errorMessage != null &&
+        _data == null) {
       return ListView(
         physics:
             const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
+        padding:
+            const EdgeInsets.all(20),
         children: [
           const SizedBox(height: 80),
           Icon(
             Icons.cloud_off_outlined,
             size: 56,
             color:
-                Theme.of(context).colorScheme.error,
+                Theme.of(context)
+                    .colorScheme
+                    .error,
           ),
           const SizedBox(height: 16),
           Text(
@@ -192,9 +208,11 @@ class _HomeDetailsScreenState
           Center(
             child: FilledButton.icon(
               onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label:
-                  const Text('Spróbuj ponownie'),
+              icon:
+                  const Icon(Icons.refresh),
+              label: const Text(
+                'Spróbuj ponownie',
+              ),
             ),
           ),
         ],
@@ -203,17 +221,30 @@ class _HomeDetailsScreenState
 
     final data = _data!;
     final activeCount = data.devices
-        .where((device) => device.isActive)
+        .where(
+          (device) => device.isActive,
+        )
         .length;
+
+    final safetyStatus =
+        HomeSafetyEvaluator.evaluate(
+      data.recentEvents,
+    );
 
     return ListView(
       physics:
           const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(20),
+      padding:
+          const EdgeInsets.all(20),
       children: [
+        _SafetyStatusCard(
+          status: safetyStatus,
+        ),
+        const SizedBox(height: 16),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding:
+                const EdgeInsets.all(18),
             child: Row(
               children: [
                 const CircleAvatar(
@@ -227,19 +258,25 @@ class _HomeDetailsScreenState
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                        CrossAxisAlignment
+                            .start,
                     children: [
                       Text(
                         widget.home.name,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge,
+                        style:
+                            Theme.of(context)
+                                .textTheme
+                                .titleLarge,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(
+                        height: 4,
+                      ),
                       Text(
                         '${widget.home.id} • rola: ${widget.home.role}',
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(
+                        height: 8,
+                      ),
                       Text(
                         '$activeCount z '
                         '${data.devices.length} '
@@ -262,15 +299,19 @@ class _HomeDetailsScreenState
         Text(
           'Urządzenia',
           style:
-              Theme.of(context).textTheme.titleLarge,
+              Theme.of(context)
+                  .textTheme
+                  .titleLarge,
         ),
         const SizedBox(height: 12),
         if (data.devices.isEmpty)
           const Card(
             child: ListTile(
-              leading:
-                  Icon(Icons.sensors_off_outlined),
-              title: Text('Brak urządzeń'),
+              leading: Icon(
+                Icons.sensors_off_outlined,
+              ),
+              title:
+                  Text('Brak urządzeń'),
               subtitle: Text(
                 'Do tego gospodarstwa nie przypisano jeszcze żadnych czujników.',
               ),
@@ -294,7 +335,9 @@ class _HomeDetailsScreenState
                 child: ListTile(
                   leading: CircleAvatar(
                     child: Icon(
-                      _deviceIcon(device),
+                      _deviceIcon(
+                        device,
+                      ),
                     ),
                   ),
                   title: Text(
@@ -323,17 +366,21 @@ class _HomeDetailsScreenState
         Text(
           'Ostatnie zdarzenia',
           style:
-              Theme.of(context).textTheme.titleLarge,
+              Theme.of(context)
+                  .textTheme
+                  .titleLarge,
         ),
         const SizedBox(height: 12),
         if (data.recentEvents.isEmpty)
           const Card(
             child: ListTile(
               leading: Icon(
-                Icons.history_toggle_off_outlined,
+                Icons
+                    .history_toggle_off_outlined,
               ),
-              title:
-                  Text('Brak zapisanych zdarzeń'),
+              title: Text(
+                'Brak zapisanych zdarzeń',
+              ),
             ),
           )
         else
@@ -345,8 +392,9 @@ class _HomeDetailsScreenState
                     _eventIcon(event),
                   ),
                 ),
-                title:
-                    Text(event.displayType),
+                title: Text(
+                  event.displayType,
+                ),
                 subtitle: Text(
                   '${event.deviceId}\n'
                   '${DateTimeFormatter.compact(event.receivedAt)}'
@@ -362,7 +410,119 @@ class _HomeDetailsScreenState
   }
 }
 
-class _InlineError extends StatelessWidget {
+class _SafetyStatusCard
+    extends StatelessWidget {
+  const _SafetyStatusCard({
+    required this.status,
+  });
+
+  final HomeSafetyStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme =
+        Theme.of(context).colorScheme;
+
+    final background =
+        switch (status.level) {
+      SafetyLevel.safe =>
+        Colors.green.shade50,
+      SafetyLevel.warning =>
+        Colors.orange.shade50,
+      SafetyLevel.alarm =>
+        scheme.errorContainer,
+    };
+
+    final foreground =
+        switch (status.level) {
+      SafetyLevel.safe =>
+        Colors.green.shade900,
+      SafetyLevel.warning =>
+        Colors.orange.shade900,
+      SafetyLevel.alarm =>
+        scheme.onErrorContainer,
+    };
+
+    final icon =
+        switch (status.level) {
+      SafetyLevel.safe =>
+        Icons.verified_user_outlined,
+      SafetyLevel.warning =>
+        Icons.warning_amber_outlined,
+      SafetyLevel.alarm =>
+        Icons.crisis_alert,
+    };
+
+    final event =
+        status.triggeringEvent;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius:
+            BorderRadius.circular(16),
+      ),
+      padding:
+          const EdgeInsets.all(18),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            color: foreground,
+            size: 34,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  status.title,
+                  style:
+                      Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(
+                            color:
+                                foreground,
+                            fontWeight:
+                                FontWeight
+                                    .bold,
+                          ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  status.message,
+                  style: TextStyle(
+                    color: foreground,
+                  ),
+                ),
+                if (event != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${event.displayType} • '
+                    '${DateTimeFormatter.compact(event.receivedAt)}',
+                    style: TextStyle(
+                      color: foreground,
+                      fontWeight:
+                          FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineError
+    extends StatelessWidget {
   const _InlineError({
     required this.message,
   });
@@ -372,7 +532,8 @@ class _InlineError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding:
+          const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context)
             .colorScheme
