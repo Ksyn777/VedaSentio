@@ -1,4 +1,7 @@
+import '../models/device.dart';
 import '../models/home.dart';
+import '../models/home_details_data.dart';
+import '../models/sensor_event.dart';
 import '../models/session_data.dart';
 import '../models/user_profile.dart';
 import 'api_client.dart';
@@ -9,35 +12,167 @@ class AuthService {
   final ApiClient _api = ApiClient();
   final TokenStorage _tokens = TokenStorage();
 
-  Future<SessionData> login(String email, String password) async {
-    final login = await _api.post('/api/auth/login', {
-      'email': email.trim(),
-      'password': password,
-    });
-    final token = login['access_token'];
-    if (token is! String || token.isEmpty) throw const ApiException('Brak tokena dostępu.');
-    await _tokens.save(token);
-    try { return await _load(token); }
-    catch (_) { await _tokens.clear(); rethrow; }
-  }
+  Future<SessionData> login(
+    String email,
+    String password,
+  ) async {
+    final login = await _api.post(
+      '/api/auth/login',
+      {
+        'email': email.trim(),
+        'password': password,
+      },
+    );
 
-  Future<SessionData?> restore() async {
-    final token = await _tokens.read();
-    if (token == null || token.isEmpty) return null;
-    try { return await _load(token); }
-    on ApiException catch (e) {
-      if (e.isUnauthorized) { await _tokens.clear(); return null; }
+    final token = login['access_token'];
+
+    if (token is! String || token.isEmpty) {
+      throw const ApiException(
+        'Brak tokena dostępu.',
+      );
+    }
+
+    await _tokens.save(token);
+
+    try {
+      return await _load(token);
+    } catch (_) {
+      await _tokens.clear();
       rethrow;
     }
   }
 
-  Future<SessionData> _load(String token) async {
-    final me = UserProfile.fromJson(await _api.getObject('/api/me', token));
-    final homesRaw = await _api.getList('/api/homes', token);
-    final homes = homesRaw.whereType<Map<String, dynamic>>().map(Home.fromJson).toList(growable: false);
-    return SessionData(user: me, homes: homes);
+  Future<SessionData?> restore() async {
+    final token = await _tokens.read();
+
+    if (token == null || token.isEmpty) {
+      return null;
+    }
+
+    try {
+      return await _load(token);
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _tokens.clear();
+        return null;
+      }
+
+      rethrow;
+    }
+  }
+
+  Future<HomeDetailsData> loadHomeDetails(
+    String homeId, {
+    int eventLimit = 20,
+  }) async {
+    final token = await _requireToken();
+
+    try {
+      final devicesRaw = await _api.getList(
+        '/api/homes/$homeId/devices',
+        token,
+      );
+
+      final eventsRaw = await _api.getList(
+        '/api/homes/$homeId/events?limit=$eventLimit',
+        token,
+      );
+
+      final devices = devicesRaw
+          .whereType<Map<String, dynamic>>()
+          .map(Device.fromJson)
+          .toList(growable: false);
+
+      final events = eventsRaw
+          .whereType<Map<String, dynamic>>()
+          .map(SensorEvent.fromJson)
+          .toList(growable: false);
+
+      final List<MapEntry<String, SensorEvent?>> latestEntries =
+          await Future.wait<MapEntry<String, SensorEvent?>>(
+        devices.map<Future<MapEntry<String, SensorEvent?>>>(
+          (device) async {
+            try {
+              final latestJson = await _api.getObject(
+                '/api/homes/$homeId/devices/${device.id}/latest',
+                token,
+              );
+
+              return MapEntry<String, SensorEvent?>(
+                device.id,
+                SensorEvent.fromJson(latestJson),
+              );
+            } on ApiException catch (error) {
+              if (error.statusCode == 404) {
+                return MapEntry<String, SensorEvent?>(
+                  device.id,
+                  null,
+                );
+              }
+
+              rethrow;
+            }
+          },
+        ),
+      );
+
+      return HomeDetailsData(
+        devices: devices,
+        recentEvents: events,
+        latestEventsByDevice:
+            Map<String, SensorEvent?>.fromEntries(
+          latestEntries,
+        ),
+      );
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _tokens.clear();
+      }
+
+      rethrow;
+    }
   }
 
   Future<void> logout() => _tokens.clear();
+
+  Future<String> _requireToken() async {
+    final token = await _tokens.read();
+
+    if (token == null || token.isEmpty) {
+      throw const ApiException(
+        'Sesja wygasła. Zaloguj się ponownie.',
+        statusCode: 401,
+      );
+    }
+
+    return token;
+  }
+
+  Future<SessionData> _load(
+    String token,
+  ) async {
+    final me = UserProfile.fromJson(
+      await _api.getObject(
+        '/api/me',
+        token,
+      ),
+    );
+
+    final homesRaw = await _api.getList(
+      '/api/homes',
+      token,
+    );
+
+    final homes = homesRaw
+        .whereType<Map<String, dynamic>>()
+        .map(Home.fromJson)
+        .toList(growable: false);
+
+    return SessionData(
+      user: me,
+      homes: homes,
+    );
+  }
+
   void dispose() => _api.close();
 }
