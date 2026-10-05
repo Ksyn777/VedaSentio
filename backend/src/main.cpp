@@ -1,3 +1,4 @@
+#include "alarms/AlarmRepository.h"
 #include "api/ApiServer.h"
 #include "auth/JwtService.h"
 #include "database/Database.h"
@@ -169,12 +170,17 @@ int main()
             database_connection_string
         );
 
+        AlarmRepository alarms(
+            database_connection_string
+        );
+
         database.test_connection();
 
         ApiServer api_server(
             database,
             users,
-            jwt
+            jwt,
+            alarms
         );
 
         std::thread api_thread(
@@ -194,7 +200,8 @@ int main()
             MQTT_CLIENT_ID,
             MQTT_TOPIC_FILTER,
             MQTT_QOS,
-            database
+            database,
+            alarms
         );
 
         mqtt_client.start(

@@ -1,7 +1,9 @@
 #include "ApiServer.h"
 
+#include "../alarms/AlarmRepository.h"
 #include "../auth/JwtService.h"
 #include "../database/Database.h"
+#include "../model/Alarm.h"
 #include "../model/User.h"
 #include "../users/UserRepository.h"
 
@@ -100,6 +102,93 @@ nlohmann::json event_to_json(
         {"device_timestamp", event.device_timestamp},
         {"received_at", event.received_at}
     };
+}
+
+
+nlohmann::json alarm_to_json(
+    const Alarm& alarm
+)
+{
+    nlohmann::json body = {
+        {"id", alarm.id},
+        {"home_id", alarm.home_id},
+        {"device_id", alarm.device_id},
+        {"alarm_type", alarm.alarm_type},
+        {"severity", alarm.severity},
+        {"status", alarm.status},
+        {"started_at", alarm.started_at},
+        {"created_at", alarm.created_at},
+        {"updated_at", alarm.updated_at}
+    };
+
+    body["source_event_id"] = alarm.source_event_id.has_value()
+        ? nlohmann::json(*alarm.source_event_id)
+        : nlohmann::json(nullptr);
+
+    body["last_event_id"] = alarm.last_event_id.has_value()
+        ? nlohmann::json(*alarm.last_event_id)
+        : nlohmann::json(nullptr);
+
+    body["acknowledged_at"] = alarm.acknowledged_at.empty()
+        ? nlohmann::json(nullptr)
+        : nlohmann::json(alarm.acknowledged_at);
+
+    body["acknowledged_by"] = alarm.acknowledged_by.has_value()
+        ? nlohmann::json(*alarm.acknowledged_by)
+        : nlohmann::json(nullptr);
+
+    body["resolved_at"] = alarm.resolved_at.empty()
+        ? nlohmann::json(nullptr)
+        : nlohmann::json(alarm.resolved_at);
+
+    body["resolved_by"] = alarm.resolved_by.has_value()
+        ? nlohmann::json(*alarm.resolved_by)
+        : nlohmann::json(nullptr);
+
+    body["resolution_source"] = alarm.resolution_source.empty()
+        ? nlohmann::json(nullptr)
+        : nlohmann::json(alarm.resolution_source);
+
+    return body;
+}
+
+std::optional<std::string> home_role(
+    long long user_id,
+    const std::string& home_id,
+    UserRepository& users
+)
+{
+    for (const auto& membership : users.get_home_memberships(user_id))
+    {
+        if (membership.home_id == home_id)
+            return membership.role;
+    }
+
+    return std::nullopt;
+}
+
+bool require_alarm_management_role(
+    const User& user,
+    const std::string& home_id,
+    httplib::Response& response,
+    UserRepository& users
+)
+{
+    const auto role = home_role(user.id, home_id, users);
+
+    if (role.has_value() &&
+        (*role == "owner" || *role == "caregiver"))
+    {
+        return true;
+    }
+
+    send_json(
+        response,
+        {{"error", "Alarm management requires owner or caregiver role."}},
+        403
+    );
+
+    return false;
 }
 
 std::optional<std::string> bearer_token(
@@ -257,11 +346,13 @@ bool require_home_access(
 ApiServer::ApiServer(
     Database& database,
     UserRepository& users,
-    JwtService& jwt
+    JwtService& jwt,
+    AlarmRepository& alarms
 )
     : database_(database),
       users_(users),
-      jwt_(jwt)
+      jwt_(jwt),
+      alarms_(alarms)
 {
 }
 
@@ -362,7 +453,6 @@ void ApiServer::start(
                 if (
                     email.empty() ||
                     email.size() > 320 ||
-                    email.find('@') == std::string::npos ||
                     password.empty() ||
                     password.size() > 1024
                 )
@@ -378,11 +468,21 @@ void ApiServer::start(
                     return;
                 }
 
-                const std::optional<User> user =
-                    users_.authenticate(
-                        email,
-                        password
-                    );
+                std::optional<User> user;
+
+                try
+                {
+                    user =
+                        users_.authenticate(
+                            email,
+                            password
+                        );
+                }
+                catch (...)
+                {
+                    user =
+                        std::nullopt;
+                }
 
                 if (!user.has_value())
                 {
@@ -898,6 +998,178 @@ void ApiServer::start(
                     {
                         {"error", "Unable to load latest event."}
                     },
+                    500
+                );
+            }
+        }
+    );
+
+
+    server.Get(
+        R"(/api/homes/([^/]+)/alarms)",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user = authenticated_user(
+                request,
+                response,
+                users_,
+                jwt_
+            );
+
+            if (!user.has_value())
+                return;
+
+            try
+            {
+                const std::string home_id = request.matches[1];
+
+                if (!require_home_access(
+                        *user,
+                        home_id,
+                        response,
+                        users_
+                    ))
+                {
+                    return;
+                }
+
+                bool active_only = false;
+                int limit = 100;
+
+                if (request.has_param("active"))
+                {
+                    const std::string value =
+                        request.get_param_value("active");
+
+                    active_only =
+                        value == "true" ||
+                        value == "1";
+                }
+
+                if (request.has_param("limit"))
+                {
+                    try
+                    {
+                        limit = std::stoi(
+                            request.get_param_value("limit")
+                        );
+                    }
+                    catch (...)
+                    {
+                        send_json(
+                            response,
+                            {{"error", "Invalid limit parameter."}},
+                            400
+                        );
+                        return;
+                    }
+                }
+
+                nlohmann::json body = nlohmann::json::array();
+
+                for (const auto& alarm : alarms_.get_alarms(
+                         home_id,
+                         active_only,
+                         limit
+                     ))
+                {
+                    body.push_back(alarm_to_json(alarm));
+                }
+
+                send_json(response, body);
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr
+                    << "[API] alarms error: "
+                    << error.what()
+                    << '\n';
+
+                send_json(
+                    response,
+                    {{"error", "Unable to load alarms."}},
+                    500
+                );
+            }
+        }
+    );
+
+    server.Post(
+        R"(/api/homes/([^/]+)/alarms/([0-9]+)/acknowledge)",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user = authenticated_user(
+                request,
+                response,
+                users_,
+                jwt_
+            );
+
+            if (!user.has_value())
+                return;
+
+            try
+            {
+                const std::string home_id = request.matches[1];
+                const long long alarm_id = std::stoll(request.matches[2].str());
+
+                if (!require_home_access(
+                        *user,
+                        home_id,
+                        response,
+                        users_
+                    ))
+                {
+                    return;
+                }
+
+                if (!require_alarm_management_role(
+                        *user,
+                        home_id,
+                        response,
+                        users_
+                    ))
+                {
+                    return;
+                }
+
+                const auto alarm = alarms_.acknowledge_alarm(
+                    home_id,
+                    alarm_id,
+                    user->id
+                );
+
+                if (!alarm.has_value())
+                {
+                    send_json(
+                        response,
+                        {{"error", "Active alarm not found."}},
+                        404
+                    );
+                    return;
+                }
+
+                send_json(
+                    response,
+                    alarm_to_json(*alarm)
+                );
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr
+                    << "[API] acknowledge alarm error: "
+                    << error.what()
+                    << '\n';
+
+                send_json(
+                    response,
+                    {{"error", "Unable to acknowledge alarm."}},
                     500
                 );
             }

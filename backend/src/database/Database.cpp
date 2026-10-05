@@ -100,7 +100,7 @@ void Database::validate_device(
     }
 }
 
-void Database::save_event(
+long long Database::save_event(
     const SensorEvent& event
 ) const
 {
@@ -115,7 +115,7 @@ void Database::save_event(
 
     pqxx::work transaction(connection);
 
-    transaction.exec(
+    const pqxx::result result = transaction.exec(
         R"SQL(
             INSERT INTO sensor_events
             (
@@ -137,6 +137,7 @@ void Database::save_event(
                 $6::jsonb,
                 $7::timestamptz
             )
+            RETURNING id
         )SQL",
         pqxx::params{
             event.topic,
@@ -149,9 +150,16 @@ void Database::save_event(
         }
     );
 
+    const long long event_id =
+        result[0]["id"].as<long long>();
+
     transaction.commit();
 
-    std::cout << "[DB] Structured event saved.\n";
+    std::cout << "[DB] Structured event saved. id="
+              << event_id
+              << "\n";
+
+    return event_id;
 }
 
 std::vector<Home> Database::get_homes() const

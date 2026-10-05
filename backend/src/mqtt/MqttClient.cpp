@@ -1,5 +1,6 @@
 #include "MqttClient.h"
 
+#include "../alarms/AlarmRepository.h"
 #include "../database/Database.h"
 #include "../model/SensorEvent.h"
 
@@ -99,12 +100,14 @@ MqttClient::MqttClient(
     std::string client_id,
     std::string topic_filter,
     int qos,
-    Database& database
+    Database& database,
+    AlarmRepository& alarms
 )
     : server_address_(std::move(server_address)),
       topic_filter_(std::move(topic_filter)),
       qos_(qos),
       database_(database),
+      alarms_(alarms),
       client_(server_address_, std::move(client_id))
 {
     client_.set_callback(*this);
@@ -195,7 +198,13 @@ void MqttClient::message_arrived(
 
         std::cout << "[DEVICE] Registered and active.\n";
 
-        database_.save_event(event);
+        const long long event_id =
+            database_.save_event(event);
+
+        alarms_.process_event(
+            event,
+            event_id
+        );
     }
     catch (const nlohmann::json::exception& error)
     {

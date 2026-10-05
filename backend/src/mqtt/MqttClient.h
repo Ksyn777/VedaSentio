@@ -4,6 +4,7 @@
 
 #include <string>
 
+class AlarmRepository;
 class Database;
 
 class MqttClient final : public virtual mqtt::callback
@@ -14,7 +15,8 @@ public:
         std::string client_id,
         std::string topic_filter,
         int qos,
-        Database& database
+        Database& database,
+        AlarmRepository& alarms
     );
 
     void start(
@@ -22,7 +24,9 @@ public:
         const std::string& password
     );
 
-    void connection_lost(const std::string& cause) override;
+    void connection_lost(
+        const std::string& cause
+    ) override;
 
     void message_arrived(
         mqtt::const_message_ptr message
@@ -33,5 +37,6 @@ private:
     std::string topic_filter_;
     int qos_;
     Database& database_;
+    AlarmRepository& alarms_;
     mqtt::async_client client_;
 };

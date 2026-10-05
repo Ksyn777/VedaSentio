@@ -2,6 +2,7 @@
 
 #include <string>
 
+class AlarmRepository;
 class Database;
 class JwtService;
 class UserRepository;
@@ -12,7 +13,8 @@ public:
     ApiServer(
         Database& database,
         UserRepository& users,
-        JwtService& jwt
+        JwtService& jwt,
+        AlarmRepository& alarms
     );
 
     void start(
@@ -24,4 +26,5 @@ private:
     Database& database_;
     UserRepository& users_;
     JwtService& jwt_;
+    AlarmRepository& alarms_;
 };

@@ -47,6 +47,7 @@ add_executable(vedasentio_backend
     src/database/Database.cpp
     src/mqtt/MqttClient.cpp
     src/api/ApiServer.cpp
+    src/alarms/AlarmRepository.cpp
 )
 
 target_compile_definitions(vedasentio_backend PRIVATE PAHO_MQTTPP_IMPORTS)
@@ -72,3 +73,17 @@ target_link_libraries(vedasentio_create_dev_user PRIVATE vedasentio_identity)
 
 add_executable(vedasentio_atomic_user_test tools/atomic_user_test.cpp)
 target_link_libraries(vedasentio_atomic_user_test PRIVATE vedasentio_identity)
+
+
+add_executable(vedasentio_alarm_flow_test
+    tools/alarm_flow_test.cpp
+    src/database/Database.cpp
+    src/alarms/AlarmRepository.cpp
+)
+
+target_include_directories(vedasentio_alarm_flow_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+target_link_libraries(vedasentio_alarm_flow_test PRIVATE
+    libpqxx::pqxx
+    nlohmann_json::nlohmann_json
+)
