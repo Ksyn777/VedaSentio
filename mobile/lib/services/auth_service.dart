@@ -1,3 +1,4 @@
+import '../models/alarm.dart';
 import '../models/device.dart';
 import '../models/home.dart';
 import '../models/home_details_data.dart';
@@ -10,7 +11,8 @@ import 'token_storage.dart';
 
 class AuthService {
   final ApiClient _api = ApiClient();
-  final TokenStorage _tokens = TokenStorage();
+  final TokenStorage _tokens =
+      TokenStorage();
 
   Future<SessionData> login(
     String email,
@@ -26,7 +28,8 @@ class AuthService {
 
     final token = login['access_token'];
 
-    if (token is! String || token.isEmpty) {
+    if (token is! String ||
+        token.isEmpty) {
       throw const ApiException(
         'Brak tokena dostępu.',
       );
@@ -43,9 +46,11 @@ class AuthService {
   }
 
   Future<SessionData?> restore() async {
-    final token = await _tokens.read();
+    final token =
+        await _tokens.read();
 
-    if (token == null || token.isEmpty) {
+    if (token == null ||
+        token.isEmpty) {
       return null;
     }
 
@@ -64,47 +69,96 @@ class AuthService {
   Future<HomeDetailsData> loadHomeDetails(
     String homeId, {
     int eventLimit = 20,
+    int alarmHistoryLimit = 20,
   }) async {
     final token = await _requireToken();
 
     try {
-      final devicesRaw = await _api.getList(
+      final devicesRaw =
+          await _api.getList(
         '/api/homes/$homeId/devices',
         token,
       );
 
-      final eventsRaw = await _api.getList(
+      final eventsRaw =
+          await _api.getList(
         '/api/homes/$homeId/events?limit=$eventLimit',
         token,
       );
 
+      final activeAlarmsRaw =
+          await _api.getList(
+        '/api/homes/$homeId/alarms?active=true',
+        token,
+      );
+
+      final alarmHistoryRaw =
+          await _api.getList(
+        '/api/homes/$homeId/alarms?limit=$alarmHistoryLimit',
+        token,
+      );
+
       final devices = devicesRaw
-          .whereType<Map<String, dynamic>>()
+          .whereType<
+              Map<String, dynamic>>()
           .map(Device.fromJson)
           .toList(growable: false);
 
       final events = eventsRaw
-          .whereType<Map<String, dynamic>>()
+          .whereType<
+              Map<String, dynamic>>()
           .map(SensorEvent.fromJson)
           .toList(growable: false);
 
-      final List<MapEntry<String, SensorEvent?>> latestEntries =
-          await Future.wait<MapEntry<String, SensorEvent?>>(
-        devices.map<Future<MapEntry<String, SensorEvent?>>>(
+      final activeAlarms =
+          activeAlarmsRaw
+              .whereType<
+                  Map<String, dynamic>>()
+              .map(Alarm.fromJson)
+              .toList(growable: false);
+
+      final alarmHistory =
+          alarmHistoryRaw
+              .whereType<
+                  Map<String, dynamic>>()
+              .map(Alarm.fromJson)
+              .toList(growable: false);
+
+      final List<
+          MapEntry<
+              String,
+              SensorEvent?>> latestEntries =
+          await Future.wait<
+              MapEntry<
+                  String,
+                  SensorEvent?>>(
+        devices.map<
+            Future<
+                MapEntry<
+                    String,
+                    SensorEvent?>>>(
           (device) async {
             try {
-              final latestJson = await _api.getObject(
+              final latestJson =
+                  await _api.getObject(
                 '/api/homes/$homeId/devices/${device.id}/latest',
                 token,
               );
 
-              return MapEntry<String, SensorEvent?>(
+              return MapEntry<
+                  String,
+                  SensorEvent?>(
                 device.id,
-                SensorEvent.fromJson(latestJson),
+                SensorEvent.fromJson(
+                  latestJson,
+                ),
               );
             } on ApiException catch (error) {
-              if (error.statusCode == 404) {
-                return MapEntry<String, SensorEvent?>(
+              if (error.statusCode ==
+                  404) {
+                return MapEntry<
+                    String,
+                    SensorEvent?>(
                   device.id,
                   null,
                 );
@@ -120,9 +174,13 @@ class AuthService {
         devices: devices,
         recentEvents: events,
         latestEventsByDevice:
-            Map<String, SensorEvent?>.fromEntries(
+            Map<
+                String,
+                SensorEvent?>.fromEntries(
           latestEntries,
         ),
+        activeAlarms: activeAlarms,
+        alarmHistory: alarmHistory,
       );
     } on ApiException catch (error) {
       if (error.isUnauthorized) {
@@ -133,12 +191,38 @@ class AuthService {
     }
   }
 
-  Future<void> logout() => _tokens.clear();
+  Future<Alarm> acknowledgeAlarm({
+    required String homeId,
+    required int alarmId,
+  }) async {
+    final token = await _requireToken();
+
+    try {
+      final response =
+          await _api.postAuthorized(
+        '/api/homes/$homeId/alarms/$alarmId/acknowledge',
+        token,
+      );
+
+      return Alarm.fromJson(response);
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _tokens.clear();
+      }
+
+      rethrow;
+    }
+  }
+
+  Future<void> logout() =>
+      _tokens.clear();
 
   Future<String> _requireToken() async {
-    final token = await _tokens.read();
+    final token =
+        await _tokens.read();
 
-    if (token == null || token.isEmpty) {
+    if (token == null ||
+        token.isEmpty) {
       throw const ApiException(
         'Sesja wygasła. Zaloguj się ponownie.',
         statusCode: 401,
@@ -158,13 +242,15 @@ class AuthService {
       ),
     );
 
-    final homesRaw = await _api.getList(
+    final homesRaw =
+        await _api.getList(
       '/api/homes',
       token,
     );
 
     final homes = homesRaw
-        .whereType<Map<String, dynamic>>()
+        .whereType<
+            Map<String, dynamic>>()
         .map(Home.fromJson)
         .toList(growable: false);
 
