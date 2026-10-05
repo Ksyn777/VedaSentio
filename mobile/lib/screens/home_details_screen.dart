@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/device.dart';
@@ -20,8 +22,7 @@ class HomeDetailsScreen extends StatefulWidget {
 
   final Home home;
   final AuthService authService;
-  final Future<void> Function()
-      onSessionExpired;
+  final Future<void> Function() onSessionExpired;
 
   @override
   State<HomeDetailsScreen> createState() =>
@@ -30,18 +31,44 @@ class HomeDetailsScreen extends StatefulWidget {
 
 class _HomeDetailsScreenState
     extends State<HomeDetailsScreen> {
+  static const Duration _autoRefreshInterval =
+      Duration(seconds: 3);
+
   HomeDetailsData? _data;
+  Timer? _autoRefreshTimer;
+
   bool _loading = true;
+  bool _refreshInProgress = false;
   String? _errorMessage;
+  DateTime? _lastUpdatedAt;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(showLoading: true);
+
+    _autoRefreshTimer = Timer.periodic(
+      _autoRefreshInterval,
+      (_) => _load(showLoading: false),
+    );
   }
 
-  Future<void> _load() async {
-    if (mounted) {
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({
+    required bool showLoading,
+  }) async {
+    if (_refreshInProgress) {
+      return;
+    }
+
+    _refreshInProgress = true;
+
+    if (mounted && showLoading) {
       setState(() {
         _loading = true;
         _errorMessage = null;
@@ -61,6 +88,8 @@ class _HomeDetailsScreenState
       setState(() {
         _data = data;
         _loading = false;
+        _errorMessage = null;
+        _lastUpdatedAt = DateTime.now();
       });
     } on ApiException catch (error) {
       if (error.isUnauthorized) {
@@ -97,7 +126,30 @@ class _HomeDetailsScreenState
             'Nie udało się pobrać danych gospodarstwa.';
         _loading = false;
       });
+    } finally {
+      _refreshInProgress = false;
     }
+  }
+
+  Future<void> _manualRefresh() {
+    return _load(
+      showLoading: _data == null,
+    );
+  }
+
+  String _lastUpdatedLabel() {
+    final value = _lastUpdatedAt;
+
+    if (value == null) {
+      return 'oczekiwanie na dane';
+    }
+
+    String twoDigits(int number) =>
+        number.toString().padLeft(2, '0');
+
+    return '${twoDigits(value.hour)}:'
+        '${twoDigits(value.minute)}:'
+        '${twoDigits(value.second)}';
   }
 
   IconData _deviceIcon(Device device) {
@@ -129,12 +181,20 @@ class _HomeDetailsScreenState
         Icons.door_back_door_outlined,
       'smoke_detected' =>
         Icons.warning_amber_outlined,
+      'smoke_cleared' =>
+        Icons.check_circle_outline,
       'co_detected' =>
         Icons.warning_amber_outlined,
+      'co_cleared' =>
+        Icons.check_circle_outline,
       'gas_detected' =>
         Icons.warning_amber_outlined,
+      'gas_cleared' =>
+        Icons.check_circle_outline,
       'flood_detected' =>
         Icons.water_drop_outlined,
+      'flood_cleared' =>
+        Icons.check_circle_outline,
       _ => Icons.notifications_none_outlined,
     };
   }
@@ -146,17 +206,17 @@ class _HomeDetailsScreenState
         title: Text(widget.home.name),
         actions: [
           IconButton(
-            tooltip: 'Odśwież',
-            onPressed:
-                _loading ? null : _load,
-            icon:
-                const Icon(Icons.refresh),
+            tooltip: 'Odśwież teraz',
+            onPressed: _refreshInProgress
+                ? null
+                : _manualRefresh,
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _load,
+          onRefresh: _manualRefresh,
           child: _buildBody(context),
         ),
       ),
@@ -207,7 +267,7 @@ class _HomeDetailsScreenState
           const SizedBox(height: 16),
           Center(
             child: FilledButton.icon(
-              onPressed: _load,
+              onPressed: _manualRefresh,
               icon:
                   const Icon(Icons.refresh),
               label: const Text(
@@ -239,6 +299,27 @@ class _HomeDetailsScreenState
       children: [
         _SafetyStatusCard(
           status: safetyStatus,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Icon(
+              Icons.sync,
+              size: 17,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Monitoring na żywo • odświeżanie co '
+                '${_autoRefreshInterval.inSeconds} s • '
+                'ostatnio: ${_lastUpdatedLabel()}',
+                style:
+                    Theme.of(context)
+                        .textTheme
+                        .bodySmall,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Card(
