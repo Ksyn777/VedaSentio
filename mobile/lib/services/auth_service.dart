@@ -214,6 +214,23 @@ class AuthService {
     }
   }
 
+
+  Future<void> registerMobilePushNotificationToken(
+    String firebaseCloudMessagingToken,
+    String mobilePlatformName,
+  ) async {
+    final accessToken = await _requireToken();
+
+    await _api.postAuthorized(
+      '/api/mobile-devices/push-token',
+      accessToken,
+      body: {
+        'fcm_token': firebaseCloudMessagingToken,
+        'platform': mobilePlatformName,
+      },
+    );
+  }
+
   Future<void> logout() =>
       _tokens.clear();
 

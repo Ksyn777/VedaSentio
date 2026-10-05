@@ -342,3 +342,59 @@ std::optional<EventRecord> Database::get_latest_event(
         result[0]
     );
 }
+
+
+void Database::save_mobile_push_notification_token(
+    long long user_id,
+    const std::string& firebase_cloud_messaging_token,
+    const std::string& mobile_platform
+) const
+{
+    pqxx::connection connection(connection_string_);
+
+    if (!connection.is_open())
+    {
+        throw std::runtime_error(
+            "Unable to open PostgreSQL connection."
+        );
+    }
+
+    pqxx::work transaction(connection);
+
+    transaction.exec(
+        R"SQL(
+            INSERT INTO mobile_push_tokens
+            (
+                user_id,
+                fcm_token,
+                platform,
+                is_active,
+                last_registered_at,
+                updated_at
+            )
+            VALUES
+            (
+                $1,
+                $2,
+                $3,
+                TRUE,
+                NOW(),
+                NOW()
+            )
+            ON CONFLICT (fcm_token)
+            DO UPDATE SET
+                user_id = EXCLUDED.user_id,
+                platform = EXCLUDED.platform,
+                is_active = TRUE,
+                last_registered_at = NOW(),
+                updated_at = NOW()
+        )SQL",
+        pqxx::params{
+            user_id,
+            firebase_cloud_messaging_token,
+            mobile_platform
+        }
+    );
+
+    transaction.commit();
+}

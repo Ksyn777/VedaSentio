@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/session_data.dart';
 import '../services/auth_service.dart';
+import '../services/vedasentio_push_notification_service.dart';
 import 'dashboard_screen.dart';
 import 'login_screen.dart';
 
@@ -14,6 +15,8 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   late final AuthService _auth;
+  late final VedaSentioPushNotificationService
+      _pushNotificationService;
 
   SessionData? _session;
   bool _loading = true;
@@ -23,6 +26,8 @@ class _AuthGateState extends State<AuthGate> {
   void initState() {
     super.initState();
     _auth = AuthService();
+    _pushNotificationService =
+        VedaSentioPushNotificationService();
     _restore();
   }
 
@@ -39,6 +44,10 @@ class _AuthGateState extends State<AuthGate> {
         _loading = false;
         _error = null;
       });
+
+      if (session != null) {
+        await _registerMobileDeviceForPushNotifications();
+      }
     } catch (_) {
       if (!mounted) {
         return;
@@ -50,6 +59,24 @@ class _AuthGateState extends State<AuthGate> {
         _loading = false;
       });
     }
+  }
+
+
+  void _handleSuccessfulLogin(
+    SessionData session,
+  ) {
+    setState(() {
+      _session = session;
+      _error = null;
+    });
+
+    _registerMobileDeviceForPushNotifications();
+  }
+
+  Future<void> _registerMobileDeviceForPushNotifications() async {
+    await _pushNotificationService.registerCurrentMobileDevice(
+      _auth,
+    );
   }
 
   Future<void> _logout() async {
@@ -84,12 +111,7 @@ class _AuthGateState extends State<AuthGate> {
       return LoginScreen(
         auth: _auth,
         startupError: _error,
-        onLogin: (session) {
-          setState(() {
-            _session = session;
-            _error = null;
-          });
-        },
+        onLogin: _handleSuccessfulLogin,
       );
     }
 

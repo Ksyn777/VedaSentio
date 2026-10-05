@@ -41,6 +41,12 @@ public:
         const std::string& device_id
     ) const;
 
+    void save_mobile_push_notification_token(
+        long long user_id,
+        const std::string& firebase_cloud_messaging_token,
+        const std::string& mobile_platform
+    ) const;
+
 private:
     std::string connection_string_;
 };

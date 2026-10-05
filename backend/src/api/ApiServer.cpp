@@ -1176,6 +1176,205 @@ void ApiServer::start(
         }
     );
 
+
+    server.Post(
+        "/api/mobile-devices/push-token",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto authenticated_mobile_user =
+                authenticated_user(
+                    request,
+                    response,
+                    users_,
+                    jwt_
+                );
+
+            if (!authenticated_mobile_user.has_value())
+            {
+                return;
+            }
+
+            try
+            {
+                if (request.body.size() > 16384)
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "Request body is too large."}
+                        },
+                        413
+                    );
+
+                    return;
+                }
+
+                nlohmann::json request_body;
+
+                try
+                {
+                    request_body =
+                        nlohmann::json::parse(
+                            request.body
+                        );
+                }
+                catch (...)
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "Invalid JSON body."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                if (!request_body.contains("fcm_token"))
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "FCM token is required."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                if (!request_body["fcm_token"].is_string())
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "FCM token must be a string."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                if (!request_body.contains("platform"))
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "Mobile platform is required."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                if (!request_body["platform"].is_string())
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "Mobile platform must be a string."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                const std::string firebase_cloud_messaging_token =
+                    request_body["fcm_token"].get<std::string>();
+
+                const std::string mobile_platform =
+                    request_body["platform"].get<std::string>();
+
+                if (firebase_cloud_messaging_token.empty())
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "FCM token cannot be empty."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                if (firebase_cloud_messaging_token.size() > 8192)
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "FCM token is too long."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                bool mobile_platform_is_supported = false;
+
+                if (mobile_platform == "android")
+                {
+                    mobile_platform_is_supported = true;
+                }
+
+                if (mobile_platform == "ios")
+                {
+                    mobile_platform_is_supported = true;
+                }
+
+                if (!mobile_platform_is_supported)
+                {
+                    send_json(
+                        response,
+                        {
+                            {"error", "Unsupported mobile platform."}
+                        },
+                        400
+                    );
+
+                    return;
+                }
+
+                database_.save_mobile_push_notification_token(
+                    authenticated_mobile_user->id,
+                    firebase_cloud_messaging_token,
+                    mobile_platform
+                );
+
+                send_json(
+                    response,
+                    {
+                        {"status", "registered"},
+                        {"platform", mobile_platform}
+                    }
+                );
+            }
+            catch (const std::exception& error)
+            {
+                std::cerr
+                    << "[API] push token registration error: "
+                    << error.what()
+                    << '\n';
+
+                send_json(
+                    response,
+                    {
+                        {"error", "Unable to register mobile device."}
+                    },
+                    500
+                );
+            }
+        }
+    );
+
     std::cout
         << "[API] Listening on http://"
         << host
