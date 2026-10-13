@@ -6,6 +6,7 @@
 
 class AlarmRepository;
 class Database;
+class PushNotificationService;
 
 class MqttClient final : public virtual mqtt::callback
 {
@@ -16,7 +17,8 @@ public:
         std::string topic_filter,
         int qos,
         Database& database,
-        AlarmRepository& alarms
+        AlarmRepository& alarms,
+        PushNotificationService* push_notifications
     );
 
     void start(
@@ -38,5 +40,6 @@ private:
     int qos_;
     Database& database_;
     AlarmRepository& alarms_;
+    PushNotificationService* push_notifications_;
     mqtt::async_client client_;
 };

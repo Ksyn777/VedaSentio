@@ -14,7 +14,7 @@ public:
         std::string connection_string
     );
 
-    void process_event(
+    std::optional<Alarm> process_event(
         const SensorEvent& event,
         long long event_id
     ) const;

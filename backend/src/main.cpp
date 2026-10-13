@@ -3,12 +3,14 @@
 #include "auth/JwtService.h"
 #include "database/Database.h"
 #include "mqtt/MqttClient.h"
+#include "push/PushNotificationService.h"
 #include "security/CryptoService.h"
 #include "users/UserRepository.h"
 
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -24,19 +26,23 @@ constexpr const char* MQTT_CLIENT_ID =
 constexpr const char* MQTT_TOPIC_FILTER =
     "vedasentio/+/+/event";
 
-constexpr int MQTT_QOS = 1;
+constexpr int MQTT_QOS =
+    1;
 
 constexpr const char* API_HOST =
     "127.0.0.1";
 
-constexpr int API_PORT = 8080;
+constexpr int API_PORT =
+    8080;
 
 std::string require_env(
     const char* name
 )
 {
     const char* value =
-        std::getenv(name);
+        std::getenv(
+            name
+        );
 
     if (
         value == nullptr ||
@@ -54,16 +60,40 @@ std::string require_env(
     return value;
 }
 
+std::string optional_env(
+    const char* name
+)
+{
+    const char* value =
+        std::getenv(
+            name
+        );
+
+    if (
+        value == nullptr ||
+        *value == '\0'
+    )
+    {
+        return std::string();
+    }
+
+    return value;
+}
+
 std::string quote_conninfo_value(
     const std::string& value
 )
 {
     std::string result;
+
     result.reserve(
-        value.size() + 2
+        value.size() +
+        2
     );
 
-    result.push_back('\'');
+    result.push_back(
+        '\''
+    );
 
     for (char character : value)
     {
@@ -72,7 +102,9 @@ std::string quote_conninfo_value(
             character == '\''
         )
         {
-            result.push_back('\\');
+            result.push_back(
+                '\\'
+            );
         }
 
         result.push_back(
@@ -80,7 +112,9 @@ std::string quote_conninfo_value(
         );
     }
 
-    result.push_back('\'');
+    result.push_back(
+        '\''
+    );
 
     return result;
 }
@@ -114,15 +148,25 @@ std::string build_database_connection_string()
 
     return
         "host=" +
-        quote_conninfo_value(host) +
+        quote_conninfo_value(
+            host
+        ) +
         " port=" +
-        quote_conninfo_value(port) +
+        quote_conninfo_value(
+            port
+        ) +
         " dbname=" +
-        quote_conninfo_value(database) +
+        quote_conninfo_value(
+            database
+        ) +
         " user=" +
-        quote_conninfo_value(user) +
+        quote_conninfo_value(
+            user
+        ) +
         " password=" +
-        quote_conninfo_value(password);
+        quote_conninfo_value(
+            password
+        );
 }
 }
 
@@ -176,6 +220,31 @@ int main()
 
         database.test_connection();
 
+        std::unique_ptr<PushNotificationService>
+            push_notifications;
+
+        const std::string firebase_service_account_path =
+            optional_env(
+                "GOOGLE_APPLICATION_CREDENTIALS"
+            );
+
+        if (!firebase_service_account_path.empty())
+        {
+            push_notifications =
+                std::make_unique<
+                    PushNotificationService
+                >(
+                    database_connection_string,
+                    firebase_service_account_path
+                );
+        }
+        else
+        {
+            std::cout
+                << "[PUSH] GOOGLE_APPLICATION_CREDENTIALS is not set. "
+                << "Automatic push notifications are disabled.\n";
+        }
+
         ApiServer api_server(
             database,
             users,
@@ -201,7 +270,8 @@ int main()
             MQTT_TOPIC_FILTER,
             MQTT_QOS,
             database,
-            alarms
+            alarms,
+            push_notifications.get()
         );
 
         mqtt_client.start(
@@ -215,7 +285,9 @@ int main()
         while (true)
         {
             std::this_thread::sleep_for(
-                std::chrono::seconds(1)
+                std::chrono::seconds(
+                    1
+                )
             );
         }
     }
