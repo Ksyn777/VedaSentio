@@ -79,7 +79,7 @@ class Alarm {
       'sos' => 'Alarm SOS',
       'smoke' => 'Dym',
       'co' => 'Tlenek węgla',
-      'gas' => 'Gaz',
+      'gas' => 'Alarm gazu',
       'flood' => 'Zalanie',
       'device_offline' => 'Urządzenie offline',
       _ => alarmType.isEmpty ? 'Alarm' : alarmType,

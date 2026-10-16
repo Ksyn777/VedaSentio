@@ -606,7 +606,7 @@ std::string notification_title_for_alarm(
 
     if (alarm.alarm_type == "gas")
     {
-        return "VedaSentio - ALARM GAZU";
+        return "VedaSentio - WYKRYTO GAZ";
     }
 
     if (alarm.alarm_type == "flood")
