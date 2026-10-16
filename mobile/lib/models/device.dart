@@ -5,6 +5,8 @@ class Device {
     required this.deviceType,
     required this.name,
     required this.isActive,
+    required this.lastSeenAt,
+    required this.isOnline,
     required this.createdAt,
   });
 
@@ -13,6 +15,8 @@ class Device {
   final String deviceType;
   final String name;
   final bool isActive;
+  final String? lastSeenAt;
+  final bool isOnline;
   final String createdAt;
 
   factory Device.fromJson(Map<String, dynamic> json) {
@@ -22,6 +26,8 @@ class Device {
       deviceType: json['device_type'] as String? ?? '',
       name: json['name'] as String? ?? '',
       isActive: json['is_active'] as bool? ?? false,
+      lastSeenAt: json['last_seen_at'] as String?,
+      isOnline: json['is_online'] as bool? ?? false,
       createdAt: json['created_at'] as String? ?? '',
     );
   }

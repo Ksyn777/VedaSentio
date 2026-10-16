@@ -27,6 +27,11 @@ private:
         const std::string& home_id
     ) const;
 
+    std::string get_device_name(
+        const std::string& home_id,
+        const std::string& device_id
+    ) const;
+
     void mark_token_as_inactive(
         const std::string& firebase_cloud_messaging_token
     ) const;
@@ -38,6 +43,7 @@ private:
     bool send_message_to_token(
         const Alarm& alarm,
         const std::string& home_name,
+        const std::string& device_name,
         const std::string& firebase_cloud_messaging_token,
         const std::string& access_token
     );

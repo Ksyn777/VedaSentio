@@ -378,6 +378,132 @@ std::optional<Alarm> AlarmRepository::process_event(
     return newly_opened_alarm;
 }
 
+std::optional<Alarm> AlarmRepository::open_device_offline_alarm(
+    const std::string& home_id,
+    const std::string& device_id
+) const
+{
+    pqxx::connection connection(
+        connection_string_
+    );
+
+    pqxx::work transaction(
+        connection
+    );
+
+    const pqxx::result existing =
+        transaction.exec(
+            R"SQL(
+                SELECT id
+                FROM alarms
+                WHERE home_id = $1
+                  AND device_id = $2
+                  AND alarm_type = 'device_offline'
+                  AND status IN ('active', 'acknowledged')
+                ORDER BY id DESC
+                LIMIT 1
+                FOR UPDATE
+            )SQL",
+            pqxx::params{
+                home_id,
+                device_id
+            }
+        );
+
+    if (!existing.empty())
+    {
+        transaction.commit();
+        return std::nullopt;
+    }
+
+    const pqxx::result inserted =
+        transaction.exec(
+            "INSERT INTO alarms "
+            "("
+            "home_id, "
+            "device_id, "
+            "alarm_type, "
+            "severity, "
+            "status"
+            ") "
+            "VALUES "
+            "($1, $2, 'device_offline', 'warning', 'active') "
+            "RETURNING " +
+            alarm_select_columns(),
+            pqxx::params{
+                home_id,
+                device_id
+            }
+        );
+
+    Alarm alarm =
+        row_to_alarm(
+            inserted[0]
+        );
+
+    transaction.commit();
+
+    std::cout
+        << "[ALARM] Device offline: "
+        << device_id
+        << " in home "
+        << home_id
+        << ".\n";
+
+    return alarm;
+}
+
+bool AlarmRepository::resolve_device_offline_alarm(
+    const std::string& home_id,
+    const std::string& device_id
+) const
+{
+    pqxx::connection connection(
+        connection_string_
+    );
+
+    pqxx::work transaction(
+        connection
+    );
+
+    const pqxx::result resolved =
+        transaction.exec(
+            R"SQL(
+                UPDATE alarms
+                SET
+                    status = 'resolved',
+                    resolved_at = NOW(),
+                    resolution_source = 'sensor',
+                    updated_at = NOW()
+                WHERE home_id = $1
+                  AND device_id = $2
+                  AND alarm_type = 'device_offline'
+                  AND status IN ('active', 'acknowledged')
+                RETURNING id
+            )SQL",
+            pqxx::params{
+                home_id,
+                device_id
+            }
+        );
+
+    transaction.commit();
+
+    if (resolved.empty())
+    {
+        return false;
+    }
+
+    std::cout
+        << "[ALARM] Device online again: "
+        << device_id
+        << " in home "
+        << home_id
+        << ".\n";
+
+    return true;
+}
+
 std::vector<Alarm> AlarmRepository::get_alarms(
     const std::string& home_id,
     bool active_only,

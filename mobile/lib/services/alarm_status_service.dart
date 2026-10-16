@@ -33,6 +33,19 @@ class AlarmStatusService {
       );
     }
 
+    final offlineAlarms = activeAlarms
+        .where((alarm) => alarm.alarmType == 'device_offline')
+        .toList(growable: false);
+
+    if (offlineAlarms.length == activeAlarms.length) {
+      return const HomeSafetyStatus(
+        level: SafetyLevel.warning,
+        title: 'Problem z monitoringiem',
+        message:
+            'Jedno lub więcej urządzeń nie odpowiada. Sprawdź połączenie lub zasilanie.',
+      );
+    }
+
     return HomeSafetyStatus(
       level: SafetyLevel.warning,
       title: 'Ostrzeżenie',

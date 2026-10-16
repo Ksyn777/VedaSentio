@@ -11,9 +11,11 @@
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -34,6 +36,9 @@ constexpr const char* API_HOST =
 
 constexpr int API_PORT =
     8080;
+
+constexpr int DEVICE_STATUS_CHECK_SECONDS =
+    10;
 
 std::string require_env(
     const char* name
@@ -168,6 +173,84 @@ std::string build_database_connection_string()
             password
         );
 }
+
+void check_device_connection_status(
+    Database& database,
+    AlarmRepository& alarms,
+    PushNotificationService* push_notifications
+)
+{
+    try
+    {
+        const std::vector<Home> homes =
+            database.get_homes();
+
+        for (const Home& home : homes)
+        {
+            const std::vector<Device> devices =
+                database.get_devices(
+                    home.id
+                );
+
+            for (const Device& device : devices)
+            {
+                if (!device.is_active)
+                {
+                    continue;
+                }
+
+                if (device.is_online)
+                {
+                    alarms.resolve_device_offline_alarm(
+                        home.id,
+                        device.id
+                    );
+
+                    continue;
+                }
+
+                if (device.last_seen_at.empty())
+                {
+                    continue;
+                }
+
+                const std::optional<Alarm> newly_opened_alarm =
+                    alarms.open_device_offline_alarm(
+                        home.id,
+                        device.id
+                    );
+
+                if (
+                    newly_opened_alarm.has_value() &&
+                    push_notifications != nullptr
+                )
+                {
+                    try
+                    {
+                        push_notifications
+                            ->send_alarm_notification(
+                                newly_opened_alarm.value()
+                            );
+                    }
+                    catch (const std::exception& push_error)
+                    {
+                        std::cerr
+                            << "[PUSH] Offline alarm saved, but notification failed: "
+                            << push_error.what()
+                            << '\n';
+                    }
+                }
+            }
+        }
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr
+            << "[DEVICE] Offline status check failed: "
+            << error.what()
+            << '\n';
+    }
+}
 }
 
 int main()
@@ -282,8 +365,34 @@ int main()
         std::cout
             << "[VedaSentio] Waiting for structured events...\n";
 
+        auto last_device_status_check =
+            std::chrono::steady_clock::now() -
+            std::chrono::seconds(
+                DEVICE_STATUS_CHECK_SECONDS
+            );
+
         while (true)
         {
+            const auto now =
+                std::chrono::steady_clock::now();
+
+            if (
+                now - last_device_status_check >=
+                std::chrono::seconds(
+                    DEVICE_STATUS_CHECK_SECONDS
+                )
+            )
+            {
+                check_device_connection_status(
+                    database,
+                    alarms,
+                    push_notifications.get()
+                );
+
+                last_device_status_check =
+                    now;
+            }
+
             std::this_thread::sleep_for(
                 std::chrono::seconds(
                     1

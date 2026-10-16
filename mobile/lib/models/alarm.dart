@@ -81,6 +81,7 @@ class Alarm {
       'co' => 'Tlenek węgla',
       'gas' => 'Gaz',
       'flood' => 'Zalanie',
+      'device_offline' => 'Urządzenie offline',
       _ => alarmType.isEmpty ? 'Alarm' : alarmType,
     };
   }

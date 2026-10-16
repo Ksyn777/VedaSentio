@@ -614,12 +614,18 @@ std::string notification_title_for_alarm(
         return "VedaSentio - ALARM ZALANIA";
     }
 
+    if (alarm.alarm_type == "device_offline")
+    {
+        return "VedaSentio - URZADZENIE OFFLINE";
+    }
+
     return "VedaSentio - ALARM";
 }
 
 std::string notification_body_for_alarm(
     const Alarm& alarm,
-    const std::string& home_name
+    const std::string& home_name,
+    const std::string& device_name
 )
 {
     if (alarm.alarm_type == "sos")
@@ -654,6 +660,14 @@ std::string notification_body_for_alarm(
     {
         return
             "Wykryto zalanie - " +
+            home_name;
+    }
+
+    if (alarm.alarm_type == "device_offline")
+    {
+        return
+            device_name +
+            " nie odpowiada - " +
             home_name;
     }
 
@@ -856,6 +870,51 @@ std::string PushNotificationService::get_home_name(
         .as<std::string>();
 }
 
+std::string PushNotificationService::get_device_name(
+    const std::string& home_id,
+    const std::string& device_id
+) const
+{
+    pqxx::connection connection(
+        database_connection_string_
+    );
+
+    pqxx::read_transaction transaction(
+        connection
+    );
+
+    const pqxx::result result =
+        transaction.exec(
+            R"SQL(
+                SELECT name
+                FROM devices
+                WHERE home_id = $1
+                  AND id = $2
+                LIMIT 1
+            )SQL",
+            pqxx::params{
+                home_id,
+                device_id
+            }
+        );
+
+    if (result.empty())
+    {
+        return device_id;
+    }
+
+    const std::string device_name =
+        result[0]["name"]
+            .as<std::string>();
+
+    if (device_name.empty())
+    {
+        return device_id;
+    }
+
+    return device_name;
+}
+
 void PushNotificationService::mark_token_as_inactive(
     const std::string& firebase_cloud_messaging_token
 ) const
@@ -1044,6 +1103,7 @@ std::string PushNotificationService::get_access_token()
 bool PushNotificationService::send_message_to_token(
     const Alarm& alarm,
     const std::string& home_name,
+    const std::string& device_name,
     const std::string& firebase_cloud_messaging_token,
     const std::string& access_token
 )
@@ -1061,7 +1121,8 @@ bool PushNotificationService::send_message_to_token(
     message["message"]["notification"]["body"] =
         notification_body_for_alarm(
             alarm,
-            home_name
+            home_name,
+            device_name
         );
 
     message["message"]["data"]["alarm_id"] =
@@ -1167,6 +1228,12 @@ void PushNotificationService::send_alarm_notification(
             alarm.home_id
         );
 
+    const std::string device_name =
+        get_device_name(
+            alarm.home_id,
+            alarm.device_id
+        );
+
     const std::string access_token =
         get_access_token();
 
@@ -1181,6 +1248,7 @@ void PushNotificationService::send_alarm_notification(
             send_message_to_token(
                 alarm,
                 home_name,
+                device_name,
                 firebase_cloud_messaging_token,
                 access_token
             )

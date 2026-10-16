@@ -21,6 +21,11 @@ public:
         const std::string& device_id
     ) const;
 
+    void update_device_last_seen(
+        const std::string& home_id,
+        const std::string& device_id
+    ) const;
+
     long long save_event(
         const SensorEvent& event
     ) const;

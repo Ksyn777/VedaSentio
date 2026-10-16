@@ -286,6 +286,11 @@ void MqttClient::message_arrived(
             event.device_id
         );
 
+        alarms_.resolve_device_offline_alarm(
+            event.home_id,
+            event.device_id
+        );
+
         if (event.event_type == "heartbeat")
         {
             std::cout
