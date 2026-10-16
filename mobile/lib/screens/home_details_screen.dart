@@ -19,6 +19,7 @@ class HomeDetailsScreen
     required this.home,
     required this.authService,
     required this.onSessionExpired,
+    this.openedAlarmId,
     super.key,
   });
 
@@ -26,6 +27,7 @@ class HomeDetailsScreen
   final AuthService authService;
   final Future<void> Function()
       onSessionExpired;
+  final int? openedAlarmId;
 
   @override
   State<HomeDetailsScreen> createState() =>
@@ -429,6 +431,30 @@ class _HomeDetailsScreenState
               growable: false,
             );
 
+    Alarm? openedAlarm;
+
+    if (widget.openedAlarmId != null) {
+      for (Alarm alarm
+          in data.activeAlarms) {
+        if (alarm.id ==
+            widget.openedAlarmId) {
+          openedAlarm = alarm;
+          break;
+        }
+      }
+
+      if (openedAlarm == null) {
+        for (Alarm alarm
+            in data.alarmHistory) {
+          if (alarm.id ==
+              widget.openedAlarmId) {
+            openedAlarm = alarm;
+            break;
+          }
+        }
+      }
+    }
+
     return ListView(
       physics:
           const AlwaysScrollableScrollPhysics(),
@@ -440,6 +466,56 @@ class _HomeDetailsScreenState
           activeAlarmCount:
               data.activeAlarms.length,
         ),
+        if (widget.openedAlarmId !=
+            null) ...[
+          const SizedBox(
+            height: 12,
+          ),
+          Text(
+            'Alarm otwarty z powiadomienia',
+            style:
+                Theme.of(context)
+                    .textTheme
+                    .titleLarge,
+          ),
+          const SizedBox(
+            height: 8,
+          ),
+          if (openedAlarm == null)
+            Card(
+              child: ListTile(
+                leading: const Icon(
+                  Icons
+                      .notifications_active_outlined,
+                ),
+                title: Text(
+                  'Alarm ID ${widget.openedAlarmId}',
+                ),
+                subtitle: const Text(
+                  'Alarm nie znajduje się już w pobranej historii. Odśwież dane, aby sprawdzić aktualny stan.',
+                ),
+              ),
+            )
+          else if (!openedAlarm.isResolved)
+            _AlarmCard(
+              alarm: openedAlarm,
+              canAcknowledge:
+                  _canManageAlarms &&
+                      openedAlarm.status ==
+                          'active',
+              acknowledging:
+                  _acknowledgingAlarmId ==
+                      openedAlarm.id,
+              onAcknowledge:
+                  () => _acknowledge(
+                openedAlarm!,
+              ),
+            )
+          else
+            _AlarmHistoryCard(
+              alarm: openedAlarm,
+            ),
+        ],
         const SizedBox(
           height: 8,
         ),

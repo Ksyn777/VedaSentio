@@ -1,10 +1,84 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/alarm_notification_target.dart';
 import 'auth_service.dart';
 
 class VedaSentioPushNotificationService {
+  StreamSubscription<RemoteMessage>?
+      _notificationOpenedSubscription;
+
+  Future<void> startAlarmNotificationOpenHandling(
+    void Function(
+      AlarmNotificationTarget notificationTarget,
+    ) handleAlarmNotificationOpened,
+  ) async {
+    bool mobilePlatformIsSupported =
+        _isSupportedMobilePlatform();
+
+    if (!mobilePlatformIsSupported) {
+      return;
+    }
+
+    try {
+      await _initializeFirebaseIfNeeded();
+
+      _notificationOpenedSubscription =
+          FirebaseMessaging.onMessageOpenedApp.listen(
+        (RemoteMessage firebaseMessage) {
+          AlarmNotificationTarget?
+              notificationTarget =
+              AlarmNotificationTarget.fromFirebaseData(
+            firebaseMessage.data,
+          );
+
+          if (notificationTarget == null) {
+            debugPrint(
+              '[PUSH] Powiadomienie nie zawiera home_id lub alarm_id.',
+            );
+            return;
+          }
+
+          handleAlarmNotificationOpened(
+            notificationTarget,
+          );
+        },
+      );
+
+      RemoteMessage? initialFirebaseMessage =
+          await FirebaseMessaging.instance
+              .getInitialMessage();
+
+      if (initialFirebaseMessage == null) {
+        return;
+      }
+
+      AlarmNotificationTarget?
+          initialNotificationTarget =
+          AlarmNotificationTarget.fromFirebaseData(
+        initialFirebaseMessage.data,
+      );
+
+      if (initialNotificationTarget == null) {
+        debugPrint(
+          '[PUSH] Początkowe powiadomienie nie zawiera home_id lub alarm_id.',
+        );
+        return;
+      }
+
+      handleAlarmNotificationOpened(
+        initialNotificationTarget,
+      );
+    } catch (error) {
+      debugPrint(
+        '[PUSH] Nie udało się uruchomić obsługi kliknięcia powiadomienia: $error',
+      );
+    }
+  }
+
   Future<bool> registerCurrentMobileDevice(
     AuthService authService,
   ) async {
@@ -16,9 +90,7 @@ class VedaSentioPushNotificationService {
     }
 
     try {
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp();
-      }
+      await _initializeFirebaseIfNeeded();
 
       FirebaseMessaging firebaseMessaging =
           FirebaseMessaging.instance;
@@ -68,16 +140,26 @@ class VedaSentioPushNotificationService {
     }
   }
 
+  Future<void> _initializeFirebaseIfNeeded() async {
+    if (Firebase.apps.isNotEmpty) {
+      return;
+    }
+
+    await Firebase.initializeApp();
+  }
+
   bool _isSupportedMobilePlatform() {
     if (kIsWeb) {
       return false;
     }
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (defaultTargetPlatform ==
+        TargetPlatform.android) {
       return true;
     }
 
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
+    if (defaultTargetPlatform ==
+        TargetPlatform.iOS) {
       return true;
     }
 
@@ -85,14 +167,21 @@ class VedaSentioPushNotificationService {
   }
 
   String _getMobilePlatformName() {
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (defaultTargetPlatform ==
+        TargetPlatform.android) {
       return 'android';
     }
 
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
+    if (defaultTargetPlatform ==
+        TargetPlatform.iOS) {
       return 'ios';
     }
 
     return 'unsupported';
+  }
+
+  void dispose() {
+    _notificationOpenedSubscription
+        ?.cancel();
   }
 }
