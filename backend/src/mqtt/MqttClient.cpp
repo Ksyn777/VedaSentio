@@ -281,6 +281,19 @@ void MqttClient::message_arrived(
         std::cout
             << "[DEVICE] Registered and active.\n";
 
+        database_.update_device_last_seen(
+            event.home_id,
+            event.device_id
+        );
+
+        if (event.event_type == "heartbeat")
+        {
+            std::cout
+                << "[HEARTBEAT] Device last_seen updated.\n";
+
+            return;
+        }
+
         const long long event_id =
             database_.save_event(
                 event

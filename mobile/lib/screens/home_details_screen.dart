@@ -407,11 +407,20 @@ class _HomeDetailsScreenState
 
     final data = _data!;
 
-    final activeCount =
+    final onlineCount =
         data.devices
             .where(
               (device) =>
-                  device.isActive,
+                  device.isOnline,
+            )
+            .length;
+
+    final offlineDeviceCount =
+        data.devices
+            .where(
+              (device) =>
+                  device.isActive &&
+                  !device.isOnline,
             )
             .length;
 
@@ -465,6 +474,8 @@ class _HomeDetailsScreenState
           status: safetyStatus,
           activeAlarmCount:
               data.activeAlarms.length,
+          offlineDeviceCount:
+              offlineDeviceCount,
         ),
         if (widget.openedAlarmId !=
             null) ...[
@@ -588,9 +599,9 @@ class _HomeDetailsScreenState
                         height: 8,
                       ),
                       Text(
-                        '$activeCount z '
+                        '$onlineCount z '
                         '${data.devices.length} '
-                        'urządzeń aktywnych',
+                        'urządzeń online',
                       ),
                     ],
                   ),
@@ -722,12 +733,30 @@ class _HomeDetailsScreenState
                   data.latestEventsByDevice[
                       device.id];
 
-              final statusText =
-                  !device.isActive
-                      ? 'Urządzenie nieaktywne'
-                      : latest == null
-                          ? 'Aktywne • brak zapisanych zdarzeń'
-                          : 'Aktywne • ${latest.displayType}';
+              String statusText;
+
+              if (!device.isActive) {
+                statusText =
+                    'Urządzenie nieaktywne';
+              } else if (!device.isOnline) {
+                statusText = 'Offline';
+              } else if (latest == null) {
+                statusText =
+                    'Online • brak zapisanych zdarzeń';
+              } else {
+                statusText =
+                    'Online • ${latest.displayType}';
+              }
+
+              String lastSeenText =
+                  'Brak kontaktu z urządzeniem';
+
+              if (device.lastSeenAt != null &&
+                  device.lastSeenAt!.isNotEmpty) {
+                lastSeenText =
+                    'Ostatni kontakt: '
+                    '${DateTimeFormatter.compact(device.lastSeenAt!)}';
+              }
 
               return Card(
                 child: ListTile(
@@ -748,17 +777,20 @@ class _HomeDetailsScreenState
                   ),
                   subtitle: Text(
                     '$statusText\n'
-                    '${device.id}'
-                    '${latest == null ? '' : '\n${DateTimeFormatter.compact(latest.receivedAt)}'}',
+                    '${device.id}\n'
+                    '$lastSeenText',
                   ),
                   isThreeLine:
                       true,
                   trailing: Icon(
-                    device.isActive
+                    !device.isActive
                         ? Icons
-                            .check_circle_outline
-                        : Icons
-                            .pause_circle_outline,
+                            .pause_circle_outline
+                        : device.isOnline
+                            ? Icons
+                                .wifi_outlined
+                            : Icons
+                                .wifi_off_outlined,
                   ),
                 ),
               );
@@ -830,10 +862,12 @@ class _SafetyStatusCard
   const _SafetyStatusCard({
     required this.status,
     required this.activeAlarmCount,
+    required this.offlineDeviceCount,
   });
 
   final HomeSafetyStatus status;
   final int activeAlarmCount;
+  final int offlineDeviceCount;
 
   @override
   Widget build(
@@ -843,8 +877,38 @@ class _SafetyStatusCard
         Theme.of(context)
             .colorScheme;
 
+    bool hasMonitoringProblem =
+        status.level ==
+                SafetyLevel.safe &&
+            offlineDeviceCount > 0;
+
+    SafetyLevel displayedLevel =
+        hasMonitoringProblem
+            ? SafetyLevel.warning
+            : status.level;
+
+    String displayedTitle =
+        hasMonitoringProblem
+            ? 'Problem z monitoringiem'
+            : status.title;
+
+    String displayedMessage;
+
+    if (hasMonitoringProblem) {
+      if (offlineDeviceCount == 1) {
+        displayedMessage =
+            'Jedno urządzenie nie odpowiada. Sprawdź połączenie lub zasilanie.';
+      } else {
+        displayedMessage =
+            '$offlineDeviceCount urządzenia nie odpowiadają. Sprawdź połączenie lub zasilanie.';
+      }
+    } else {
+      displayedMessage =
+          status.message;
+    }
+
     final background =
-        switch (status.level) {
+        switch (displayedLevel) {
       SafetyLevel.safe =>
         Colors.green.shade50,
       SafetyLevel.warning =>
@@ -854,7 +918,7 @@ class _SafetyStatusCard
     };
 
     final foreground =
-        switch (status.level) {
+        switch (displayedLevel) {
       SafetyLevel.safe =>
         Colors.green.shade900,
       SafetyLevel.warning =>
@@ -864,7 +928,7 @@ class _SafetyStatusCard
     };
 
     final icon =
-        switch (status.level) {
+        switch (displayedLevel) {
       SafetyLevel.safe =>
         Icons
             .verified_user_outlined,
@@ -905,7 +969,7 @@ class _SafetyStatusCard
                       .start,
               children: [
                 Text(
-                  status.title,
+                  displayedTitle,
                   style:
                       Theme.of(context)
                           .textTheme
@@ -922,7 +986,7 @@ class _SafetyStatusCard
                   height: 4,
                 ),
                 Text(
-                  status.message,
+                  displayedMessage,
                   style: TextStyle(
                     color:
                         foreground,

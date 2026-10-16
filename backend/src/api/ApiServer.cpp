@@ -785,6 +785,16 @@ void ApiServer::start(
                                 device.is_active
                             },
                             {
+                                "last_seen_at",
+                                device.last_seen_at.empty()
+                                    ? nlohmann::json(nullptr)
+                                    : nlohmann::json(device.last_seen_at)
+                            },
+                            {
+                                "is_online",
+                                device.is_online
+                            },
+                            {
                                 "created_at",
                                 device.created_at
                             }

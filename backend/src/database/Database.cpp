@@ -100,6 +100,39 @@ void Database::validate_device(
     }
 }
 
+
+void Database::update_device_last_seen(
+    const std::string& home_id,
+    const std::string& device_id
+) const
+{
+    pqxx::connection connection(connection_string_);
+
+    if (!connection.is_open())
+    {
+        throw std::runtime_error(
+            "Unable to open PostgreSQL connection."
+        );
+    }
+
+    pqxx::work transaction(connection);
+
+    transaction.exec(
+        R"SQL(
+            UPDATE devices
+            SET last_seen_at = NOW()
+            WHERE home_id = $1
+              AND id = $2
+        )SQL",
+        pqxx::params{
+            home_id,
+            device_id
+        }
+    );
+
+    transaction.commit();
+}
+
 long long Database::save_event(
     const SensorEvent& event
 ) const
@@ -212,6 +245,14 @@ std::vector<Device> Database::get_devices(
                 device_type,
                 name,
                 is_active,
+                last_seen_at::text AS last_seen_at,
+                CASE
+                    WHEN is_active = TRUE
+                     AND last_seen_at IS NOT NULL
+                     AND last_seen_at >= NOW() - INTERVAL '2 minutes'
+                    THEN TRUE
+                    ELSE FALSE
+                END AS is_online,
                 created_at::text AS created_at
             FROM devices
             WHERE home_id = $1
@@ -243,6 +284,19 @@ std::vector<Device> Database::get_devices(
 
         device.is_active =
             row["is_active"].as<bool>();
+
+        if (row["last_seen_at"].is_null())
+        {
+            device.last_seen_at = "";
+        }
+        else
+        {
+            device.last_seen_at =
+                row["last_seen_at"].as<std::string>();
+        }
+
+        device.is_online =
+            row["is_online"].as<bool>();
 
         device.created_at =
             row["created_at"].as<std::string>();
