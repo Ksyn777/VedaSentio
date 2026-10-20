@@ -80,6 +80,8 @@ int main()
     const std::string sos_device_id = "sos_test";
     const std::string gas_device_id = "gas_test";
     const std::string co_device_id = "co_test";
+    const std::string smoke_device_id = "smoke_test";
+    const std::string flood_device_id = "flood_test";
 
     try
     {
@@ -108,6 +110,18 @@ int main()
                 "INSERT INTO devices(home_id, id, device_type, name) "
                 "VALUES($1, $2, 'co_sensor', 'CO test')",
                 pqxx::params{home_id, co_device_id}
+            );
+
+            tx.exec(
+                "INSERT INTO devices(home_id, id, device_type, name) "
+                "VALUES($1, $2, 'smoke_sensor', 'Smoke test')",
+                pqxx::params{home_id, smoke_device_id}
+            );
+
+            tx.exec(
+                "INSERT INTO devices(home_id, id, device_type, name) "
+                "VALUES($1, $2, 'flood_sensor', 'Flood test')",
+                pqxx::params{home_id, flood_device_id}
             );
 
             tx.commit();
@@ -305,6 +319,144 @@ int main()
 
         std::cout << "[ALARM-TEST] CO alarm resolved OK.\n";
         std::cout << "[ALARM-TEST] CO alarm history preserved OK.\n";
+
+        SensorEvent smoke_detected;
+        smoke_detected.topic = "vedasentio/" + home_id + "/" + smoke_device_id + "/event";
+        smoke_detected.home_id = home_id;
+        smoke_detected.device_id = smoke_device_id;
+        smoke_detected.event_type = "smoke_detected";
+        smoke_detected.value_json = "true";
+        smoke_detected.device_timestamp = "2026-10-05T16:06:00Z";
+        smoke_detected.raw_payload = "{\"event_type\":\"smoke_detected\",\"value\":true,\"timestamp\":\"2026-10-05T16:06:00Z\"}";
+
+        const long long smoke_detected_id = database.save_event(smoke_detected);
+        alarms.process_event(smoke_detected, smoke_detected_id);
+
+        const auto active_smoke = alarms.get_alarms(home_id, true, 10);
+
+        if (active_smoke.size() != 1 ||
+            active_smoke[0].alarm_type != "smoke" ||
+            active_smoke[0].severity != "critical" ||
+            active_smoke[0].status != "active")
+        {
+            throw std::runtime_error("Smoke alarm was not opened correctly.");
+        }
+
+        const long long first_smoke_alarm_id = active_smoke[0].id;
+        std::cout << "[ALARM-TEST] Smoke alarm opened OK.\n";
+
+        SensorEvent smoke_detected_again = smoke_detected;
+        smoke_detected_again.device_timestamp = "2026-10-05T16:06:10Z";
+        smoke_detected_again.raw_payload = "{\"event_type\":\"smoke_detected\",\"value\":true,\"timestamp\":\"2026-10-05T16:06:10Z\"}";
+
+        const long long smoke_detected_again_id = database.save_event(smoke_detected_again);
+        alarms.process_event(smoke_detected_again, smoke_detected_again_id);
+
+        const auto active_smoke_after_repeat = alarms.get_alarms(home_id, true, 10);
+
+        if (active_smoke_after_repeat.size() != 1 ||
+            active_smoke_after_repeat[0].id != first_smoke_alarm_id)
+        {
+            throw std::runtime_error("Repeated smoke event created a duplicate alarm.");
+        }
+
+        std::cout << "[ALARM-TEST] Repeated smoke event did not create duplicate alarm.\n";
+
+        SensorEvent smoke_cleared = smoke_detected;
+        smoke_cleared.event_type = "smoke_cleared";
+        smoke_cleared.value_json = "false";
+        smoke_cleared.device_timestamp = "2026-10-05T16:07:00Z";
+        smoke_cleared.raw_payload = "{\"event_type\":\"smoke_cleared\",\"value\":false,\"timestamp\":\"2026-10-05T16:07:00Z\"}";
+
+        const long long smoke_cleared_id = database.save_event(smoke_cleared);
+        alarms.process_event(smoke_cleared, smoke_cleared_id);
+
+        if (!alarms.get_alarms(home_id, true, 10).empty())
+            throw std::runtime_error("Smoke alarm remained active after smoke_cleared.");
+
+        const auto history_after_smoke = alarms.get_alarms(home_id, false, 20);
+        bool resolved_smoke_alarm_found = false;
+
+        for (const Alarm& alarm : history_after_smoke)
+        {
+            if (alarm.alarm_type == "smoke" && alarm.status == "resolved")
+                resolved_smoke_alarm_found = true;
+        }
+
+        if (!resolved_smoke_alarm_found)
+            throw std::runtime_error("Resolved smoke alarm was not preserved in history.");
+
+        std::cout << "[ALARM-TEST] Smoke alarm resolved OK.\n";
+        std::cout << "[ALARM-TEST] Smoke alarm history preserved OK.\n";
+
+        SensorEvent flood_detected;
+        flood_detected.topic = "vedasentio/" + home_id + "/" + flood_device_id + "/event";
+        flood_detected.home_id = home_id;
+        flood_detected.device_id = flood_device_id;
+        flood_detected.event_type = "flood_detected";
+        flood_detected.value_json = "true";
+        flood_detected.device_timestamp = "2026-10-05T16:08:00Z";
+        flood_detected.raw_payload = "{\"event_type\":\"flood_detected\",\"value\":true,\"timestamp\":\"2026-10-05T16:08:00Z\"}";
+
+        const long long flood_detected_id = database.save_event(flood_detected);
+        alarms.process_event(flood_detected, flood_detected_id);
+
+        const auto active_flood = alarms.get_alarms(home_id, true, 10);
+
+        if (active_flood.size() != 1 ||
+            active_flood[0].alarm_type != "flood" ||
+            active_flood[0].severity != "warning" ||
+            active_flood[0].status != "active")
+        {
+            throw std::runtime_error("Flood alarm was not opened correctly.");
+        }
+
+        const long long first_flood_alarm_id = active_flood[0].id;
+        std::cout << "[ALARM-TEST] Flood alarm opened OK.\n";
+
+        SensorEvent flood_detected_again = flood_detected;
+        flood_detected_again.device_timestamp = "2026-10-05T16:08:10Z";
+        flood_detected_again.raw_payload = "{\"event_type\":\"flood_detected\",\"value\":true,\"timestamp\":\"2026-10-05T16:08:10Z\"}";
+
+        const long long flood_detected_again_id = database.save_event(flood_detected_again);
+        alarms.process_event(flood_detected_again, flood_detected_again_id);
+
+        const auto active_flood_after_repeat = alarms.get_alarms(home_id, true, 10);
+
+        if (active_flood_after_repeat.size() != 1 ||
+            active_flood_after_repeat[0].id != first_flood_alarm_id)
+        {
+            throw std::runtime_error("Repeated flood event created a duplicate alarm.");
+        }
+
+        std::cout << "[ALARM-TEST] Repeated flood event did not create duplicate alarm.\n";
+
+        SensorEvent flood_cleared = flood_detected;
+        flood_cleared.event_type = "flood_cleared";
+        flood_cleared.value_json = "false";
+        flood_cleared.device_timestamp = "2026-10-05T16:09:00Z";
+        flood_cleared.raw_payload = "{\"event_type\":\"flood_cleared\",\"value\":false,\"timestamp\":\"2026-10-05T16:09:00Z\"}";
+
+        const long long flood_cleared_id = database.save_event(flood_cleared);
+        alarms.process_event(flood_cleared, flood_cleared_id);
+
+        if (!alarms.get_alarms(home_id, true, 10).empty())
+            throw std::runtime_error("Flood alarm remained active after flood_cleared.");
+
+        const auto history_after_flood = alarms.get_alarms(home_id, false, 20);
+        bool resolved_flood_alarm_found = false;
+
+        for (const Alarm& alarm : history_after_flood)
+        {
+            if (alarm.alarm_type == "flood" && alarm.status == "resolved")
+                resolved_flood_alarm_found = true;
+        }
+
+        if (!resolved_flood_alarm_found)
+            throw std::runtime_error("Resolved flood alarm was not preserved in history.");
+
+        std::cout << "[ALARM-TEST] Flood alarm resolved OK.\n";
+        std::cout << "[ALARM-TEST] Flood alarm history preserved OK.\n";
         std::cout << "[ALARM-TEST] ALL ALARM FLOW TESTS OK.\n";
 
         cleanup(conninfo, home_id);
