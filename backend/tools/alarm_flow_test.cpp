@@ -82,6 +82,7 @@ int main()
     const std::string co_device_id = "co_test";
     const std::string smoke_device_id = "smoke_test";
     const std::string flood_device_id = "flood_test";
+    const std::string door_device_id = "door_test";
 
     try
     {
@@ -122,6 +123,12 @@ int main()
                 "INSERT INTO devices(home_id, id, device_type, name) "
                 "VALUES($1, $2, 'flood_sensor', 'Flood test')",
                 pqxx::params{home_id, flood_device_id}
+            );
+
+            tx.exec(
+                "INSERT INTO devices(home_id, id, device_type, name) "
+                "VALUES($1, $2, 'door_contact', 'Door contact test')",
+                pqxx::params{home_id, door_device_id}
             );
 
             tx.commit();
@@ -457,6 +464,70 @@ int main()
 
         std::cout << "[ALARM-TEST] Flood alarm resolved OK.\n";
         std::cout << "[ALARM-TEST] Flood alarm history preserved OK.\n";
+
+        SensorEvent door_opened;
+        door_opened.topic = "vedasentio/" + home_id + "/" + door_device_id + "/event";
+        door_opened.home_id = home_id;
+        door_opened.device_id = door_device_id;
+        door_opened.event_type = "door_opened";
+        door_opened.value_json = "true";
+        door_opened.device_timestamp = "2026-10-05T16:10:00Z";
+        door_opened.raw_payload = "{\"event_type\":\"door_opened\",\"value\":true,\"timestamp\":\"2026-10-05T16:10:00Z\"}";
+
+        const long long door_opened_id = database.save_event(door_opened);
+        const auto door_opened_alarm = alarms.process_event(door_opened, door_opened_id);
+
+        if (door_opened_alarm.has_value())
+            throw std::runtime_error("Door opened event unexpectedly created an alarm.");
+
+        if (!alarms.get_alarms(home_id, true, 10).empty())
+            throw std::runtime_error("Door opened event created an active alarm.");
+
+        std::cout << "[DOOR-TEST] door_opened stored without alarm.\n";
+
+        SensorEvent door_closed = door_opened;
+        door_closed.event_type = "door_closed";
+        door_closed.value_json = "false";
+        door_closed.device_timestamp = "2026-10-05T16:10:30Z";
+        door_closed.raw_payload = "{\"event_type\":\"door_closed\",\"value\":false,\"timestamp\":\"2026-10-05T16:10:30Z\"}";
+
+        const long long door_closed_id = database.save_event(door_closed);
+        const auto door_closed_alarm = alarms.process_event(door_closed, door_closed_id);
+
+        if (door_closed_alarm.has_value())
+            throw std::runtime_error("Door closed event unexpectedly created an alarm.");
+
+        const auto latest_door_event = database.get_latest_event(home_id, door_device_id);
+
+        if (!latest_door_event.has_value() ||
+            latest_door_event->event_type != "door_closed")
+        {
+            throw std::runtime_error("Latest door state was not saved correctly.");
+        }
+
+        const auto recent_events = database.get_events(home_id, 100);
+
+        bool door_opened_found = false;
+        bool door_closed_found = false;
+
+        for (const auto& event : recent_events)
+        {
+            if (event.device_id != door_device_id)
+                continue;
+
+            if (event.event_type == "door_opened")
+                door_opened_found = true;
+
+            if (event.event_type == "door_closed")
+                door_closed_found = true;
+        }
+
+        if (!door_opened_found || !door_closed_found)
+            throw std::runtime_error("Door contact events were not preserved in event history.");
+
+        std::cout << "[DOOR-TEST] door_closed stored without alarm.\n";
+        std::cout << "[DOOR-TEST] Door event history preserved OK.\n";
+        std::cout << "[DOOR-TEST] Latest door state is door_closed.\n";
         std::cout << "[ALARM-TEST] ALL ALARM FLOW TESTS OK.\n";
 
         cleanup(conninfo, home_id);

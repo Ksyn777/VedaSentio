@@ -27,3 +27,26 @@ DO UPDATE SET
     device_type = EXCLUDED.device_type,
     name = EXCLUDED.name,
     is_active = EXCLUDED.is_active;
+
+
+INSERT INTO devices
+(
+    home_id,
+    id,
+    device_type,
+    name,
+    is_active
+)
+VALUES
+(
+    'home_001',
+    'door_001',
+    'door_contact',
+    'Kontaktron drzwi wejściowych',
+    TRUE
+)
+ON CONFLICT (home_id, id)
+DO UPDATE SET
+    device_type = EXCLUDED.device_type,
+    name = EXCLUDED.name,
+    is_active = EXCLUDED.is_active;
