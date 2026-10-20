@@ -191,6 +191,56 @@ class AuthService {
     }
   }
 
+  Future<List<SensorEvent>> loadHomeEvents(
+    String homeId, {
+    int limit = 50,
+  }) async {
+    final token = await _requireToken();
+
+    try {
+      final eventsRaw = await _api.getList(
+        '/api/homes/$homeId/events?limit=$limit',
+        token,
+      );
+
+      return eventsRaw
+          .whereType<Map<String, dynamic>>()
+          .map(SensorEvent.fromJson)
+          .toList(growable: false);
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _tokens.clear();
+      }
+
+      rethrow;
+    }
+  }
+
+  Future<List<Alarm>> loadHomeAlarms(
+    String homeId, {
+    int limit = 50,
+  }) async {
+    final token = await _requireToken();
+
+    try {
+      final alarmsRaw = await _api.getList(
+        '/api/homes/$homeId/alarms?limit=$limit',
+        token,
+      );
+
+      return alarmsRaw
+          .whereType<Map<String, dynamic>>()
+          .map(Alarm.fromJson)
+          .toList(growable: false);
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _tokens.clear();
+      }
+
+      rethrow;
+    }
+  }
+
   Future<Alarm> acknowledgeAlarm({
     required String homeId,
     required int alarmId,
