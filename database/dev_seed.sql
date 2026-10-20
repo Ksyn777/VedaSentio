@@ -1,4 +1,4 @@
--- Development-only sample data for local testing.
+﻿-- Development-only sample data for local testing.
 
 INSERT INTO homes (id, name)
 VALUES ('home_001', 'Dom testowy')
