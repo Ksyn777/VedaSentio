@@ -79,6 +79,7 @@ int main()
 
     const std::string sos_device_id = "sos_test";
     const std::string gas_device_id = "gas_test";
+    const std::string co_device_id = "co_test";
 
     try
     {
@@ -101,6 +102,12 @@ int main()
                 "INSERT INTO devices(home_id, id, device_type, name) "
                 "VALUES($1, $2, 'gas_sensor', 'Gas test')",
                 pqxx::params{home_id, gas_device_id}
+            );
+
+            tx.exec(
+                "INSERT INTO devices(home_id, id, device_type, name) "
+                "VALUES($1, $2, 'co_sensor', 'CO test')",
+                pqxx::params{home_id, co_device_id}
             );
 
             tx.commit();
@@ -225,6 +232,79 @@ int main()
 
         std::cout << "[ALARM-TEST] Gas alarm resolved OK.\n";
         std::cout << "[ALARM-TEST] Gas alarm history preserved OK.\n";
+
+        SensorEvent co_detected;
+        co_detected.topic = "vedasentio/" + home_id + "/" + co_device_id + "/event";
+        co_detected.home_id = home_id;
+        co_detected.device_id = co_device_id;
+        co_detected.event_type = "co_detected";
+        co_detected.value_json = "true";
+        co_detected.device_timestamp = "2026-10-05T16:04:00Z";
+        co_detected.raw_payload = "{\"event_type\":\"co_detected\",\"value\":true,\"timestamp\":\"2026-10-05T16:04:00Z\"}";
+
+        const long long co_detected_id = database.save_event(co_detected);
+        alarms.process_event(co_detected, co_detected_id);
+
+        const auto active_co = alarms.get_alarms(home_id, true, 10);
+
+        if (active_co.size() != 1 ||
+            active_co[0].alarm_type != "co" ||
+            active_co[0].severity != "critical" ||
+            active_co[0].status != "active")
+        {
+            throw std::runtime_error("CO alarm was not opened correctly.");
+        }
+
+        const long long first_co_alarm_id = active_co[0].id;
+
+        std::cout << "[ALARM-TEST] CO alarm opened OK.\n";
+
+        SensorEvent co_detected_again = co_detected;
+        co_detected_again.device_timestamp = "2026-10-05T16:04:10Z";
+        co_detected_again.raw_payload = "{\"event_type\":\"co_detected\",\"value\":true,\"timestamp\":\"2026-10-05T16:04:10Z\"}";
+
+        const long long co_detected_again_id = database.save_event(co_detected_again);
+        alarms.process_event(co_detected_again, co_detected_again_id);
+
+        const auto active_co_after_repeat = alarms.get_alarms(home_id, true, 10);
+
+        if (active_co_after_repeat.size() != 1 ||
+            active_co_after_repeat[0].id != first_co_alarm_id)
+        {
+            throw std::runtime_error("Repeated CO event created a duplicate alarm.");
+        }
+
+        std::cout << "[ALARM-TEST] Repeated CO event did not create duplicate alarm.\n";
+
+        SensorEvent co_cleared = co_detected;
+        co_cleared.event_type = "co_cleared";
+        co_cleared.value_json = "false";
+        co_cleared.device_timestamp = "2026-10-05T16:05:00Z";
+        co_cleared.raw_payload = "{\"event_type\":\"co_cleared\",\"value\":false,\"timestamp\":\"2026-10-05T16:05:00Z\"}";
+
+        const long long co_cleared_id = database.save_event(co_cleared);
+        alarms.process_event(co_cleared, co_cleared_id);
+
+        if (!alarms.get_alarms(home_id, true, 10).empty())
+            throw std::runtime_error("CO alarm remained active after co_cleared.");
+
+        const auto history_after_co = alarms.get_alarms(home_id, false, 10);
+
+        bool resolved_co_alarm_found = false;
+
+        for (const Alarm& alarm : history_after_co)
+        {
+            if (alarm.alarm_type == "co" && alarm.status == "resolved")
+            {
+                resolved_co_alarm_found = true;
+            }
+        }
+
+        if (!resolved_co_alarm_found)
+            throw std::runtime_error("Resolved CO alarm was not preserved in history.");
+
+        std::cout << "[ALARM-TEST] CO alarm resolved OK.\n";
+        std::cout << "[ALARM-TEST] CO alarm history preserved OK.\n";
         std::cout << "[ALARM-TEST] ALL ALARM FLOW TESTS OK.\n";
 
         cleanup(conninfo, home_id);
