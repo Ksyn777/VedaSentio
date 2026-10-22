@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include "DoorSensor.h"
 #include "secrets.h"
 #include <PubSubClient.h>
 #include <time.h>
@@ -13,7 +14,6 @@ bool sendHeartbeat();
 bool checkTime();
 bool synchronizeTime();
 bool getUtcTimestamp(char* buffer, size_t bufferSize);
-void checkDoor();
 bool sendDoorEvent(bool doorOpen);
 
 WiFiClient espClient;
@@ -29,12 +29,6 @@ const char* ntpServer = "pl.pool.ntp.org";
 const char* timeZone = "CET-1CEST,M3.5.0,M10.5.0/3";
 bool timeSynchronized = false;
 
-// Kontaktron i Debounce
-const int KONTAKTRON_PIN = 19;
-int confirmedDoorState = -1;
-int lastRawPinState = -1;
-unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 200; // 200 ms stabilnego stanu
 
 // Odmierzanie prób wznawiania połączenia bez delay()
 unsigned long lastWifiRetry = 0;
@@ -43,9 +37,7 @@ unsigned long lastMqttRetry = 0;
 void setup() {
   Serial.begin(115200);
 
-  pinMode(KONTAKTRON_PIN, INPUT_PULLUP);
-  confirmedDoorState = digitalRead(KONTAKTRON_PIN);
-  lastRawPinState = confirmedDoorState;
+  initDoorSensor();
 
   // Konfiguracja serwera MQTT tylko raz
   client.setServer(mqtt_server, mqtt_port);
@@ -94,8 +86,19 @@ void loop() {
     }
   }
 
-  // 5. Ciągły monitoring kontaktronu z filtrem drgań styków
-  checkDoor();
+  DoorEvent event = checkDoor();
+
+  if (event == DOOR_OPENED) {
+    if (sendDoorEvent(true)) {
+      confirmDoorEvent(event);
+    }
+  } 
+  else if (event == DOOR_CLOSED) {
+    if (sendDoorEvent(false)) {
+      confirmDoorEvent(event);
+    }
+  }
+
 }
 
 bool connectWIFI(const char* ssid, const char* password) {
@@ -215,26 +218,6 @@ bool getUtcTimestamp(char* buffer, size_t bufferSize) {
   return true;
 }
 
-void checkDoor() {
-  int currentReading = digitalRead(KONTAKTRON_PIN);
-
-  // Wykrycie zmiany stanu (w tym drgań styków)
-  if (currentReading != lastRawPinState) {
-    lastDebounceTime = millis();
-    lastRawPinState = currentReading;
-  }
-
-  // Weryfikacja czy stan jest stabilny przez min. 200 ms
-  if ((millis() - lastDebounceTime) >= debounceDelay) {
-    if (currentReading != confirmedDoorState) {
-      bool isOpen = (currentReading == HIGH);
-
-      if (sendDoorEvent(isOpen)) {
-        confirmedDoorState = currentReading;
-      }
-    }
-  }
-}
   
 bool sendDoorEvent(bool doorOpen) {
   if (!isMQTTConnected()) {
