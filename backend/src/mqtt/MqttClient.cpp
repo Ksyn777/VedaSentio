@@ -207,6 +207,19 @@ void MqttClient::start(
     std::cout
         << "[MQTT] Connected.\n";
 
+    // The connected() callback handles automatic reconnects, not
+    // the initial connect. Wait for the initial SUBACK before returning.
+    client_
+        .subscribe(
+            topic_filter_,
+            qos_
+        )
+        ->wait();
+
+    std::cout
+        << "[MQTT] Subscribed: "
+        << topic_filter_
+        << '\n';
 }
 
 void MqttClient::connected(
