@@ -148,8 +148,12 @@ int main() {
         std::cout << "[ALARM-MQTT] SOS_OPENED\n";
 
         wait_until([&] {
-            return database.get_events(HOME).size() == 2;
-        }, "Repeated SOS event was not saved");
+            auto current = find_alarm(alarms, "sos", true);
+            return database.get_events(HOME).size() == 2 &&
+                   current.has_value() &&
+                   current->last_event_id.has_value() &&
+                   current->last_event_id != current->source_event_id;
+        }, "Repeated SOS did not update the existing alarm");
         auto repeated_sos = find_alarm(alarms, "sos", true);
         require(repeated_sos.has_value() && repeated_sos->id == sos_alarm_id,
                 "Repeated SOS opened a duplicate active alarm");
@@ -193,8 +197,12 @@ int main() {
         std::cout << "[ALARM-MQTT] FLOOD_OPENED\n";
 
         wait_until([&] {
-            return database.get_events(HOME).size() == 5;
-        }, "Repeated flood event was not saved");
+            auto current = find_alarm(alarms, "flood", true);
+            return database.get_events(HOME).size() == 5 &&
+                   current.has_value() &&
+                   current->last_event_id.has_value() &&
+                   current->last_event_id != current->source_event_id;
+        }, "Repeated flood did not update the existing alarm");
         auto repeated_flood = find_alarm(alarms, "flood", true);
         require(repeated_flood.has_value() &&
                 repeated_flood->id == flood_alarm_id &&

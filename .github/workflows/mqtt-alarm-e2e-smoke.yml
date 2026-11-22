@@ -1,0 +1,73 @@
+name: MQTT SOS and flood alarm integration
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/mqtt-alarm-e2e-smoke.yml"
+      - "backend/tools/mqtt_sos_flood_test.cpp"
+      - "scripts/test_mqtt_sos_flood_linux.sh"
+      - "backend/src/mqtt/**"
+      - "backend/src/database/**"
+      - "backend/src/alarms/**"
+      - "database/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mqtt-alarm-regression:
+    name: SOS and flood via MQTT and PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      VEDASENTIO_DB_HOST: "127.0.0.1"
+      VEDASENTIO_DB_PORT: "5432"
+      VEDASENTIO_DB_NAME: "vedasentio_alarm_ci"
+      VEDASENTIO_DB_USER: "ci_alarm"
+      VEDASENTIO_DB_PASSWORD: "ci_disposable_alarm_only"
+      VEDASENTIO_SMOKE_PORT: "28885"
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: vedasentio_alarm_ci
+          POSTGRES_USER: ci_alarm
+          POSTGRES_PASSWORD: ci_disposable_alarm_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_alarm -d vedasentio_alarm_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install disposable test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++ cmake libpq-dev postgresql-client \
+            nlohmann-json3-dev libpaho-mqttpp-dev libpaho-mqtt-dev \
+            mosquitto mosquitto-clients
+
+      - name: Build pinned patched libpqxx 7.10.7
+        run: |
+          git clone --depth 1 --branch 7.10.7 \
+            https://github.com/jtv/libpqxx.git "$RUNNER_TEMP/libpqxx"
+          test "$(git -C "$RUNNER_TEMP/libpqxx" rev-parse HEAD)" = \
+            "853bc0a48f0327d8670c1c0855f7abf731046319"
+          cmake -S "$RUNNER_TEMP/libpqxx" -B "$RUNNER_TEMP/libpqxx/build" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DSKIP_BUILD_TEST=ON
+          cmake --build "$RUNNER_TEMP/libpqxx/build" --parallel 2
+          sudo cmake --install "$RUNNER_TEMP/libpqxx/build"
+          sudo ldconfig
+
+      - name: Run MQTT SOS and flood integration
+        run: bash scripts/test_mqtt_sos_flood_linux.sh
