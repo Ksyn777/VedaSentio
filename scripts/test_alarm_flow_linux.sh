@@ -26,8 +26,8 @@ done
 
 binary="${RUNNER_TEMP:-/tmp}/vedasentio_alarm_flow_test"
 
-echo "[ALARM-CI] Building focused alarm test..."
-g++   -std=c++20   -O2   -Wall   -Wextra   -Ibackend/src   backend/tools/alarm_flow_test.cpp   backend/src/database/Database.cpp   backend/src/alarms/AlarmRepository.cpp   -lpqxx   -lpq   -o "$binary"
+echo "[ALARM-CI] Building focused alarm test with AddressSanitizer and UBSan..."
+g++   -std=c++20   -O2   -g   -fno-omit-frame-pointer   -fsanitize=address,undefined   -Wall   -Wextra   -Ibackend/src   backend/tools/alarm_flow_test.cpp   backend/src/database/Database.cpp   backend/src/alarms/AlarmRepository.cpp   -lpqxx   -lpq   -o "$binary"
 
 echo "[ALARM-CI] Running alarm regression test..."
-ASAN_OPTIONS=abort_on_error=1:detect_leaks=0 "$binary"
+ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:print_stacktrace=1 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 "$binary"
