@@ -27,9 +27,26 @@ PR musi zawierać:
 - jakie pliki/moduły ruszono,
 - jakie testy naprawdę uruchomiono i ich wynik,
 - czego nie udało się sprawdzić,
-- jak użytkownik ma odebrać zmianę lokalnie.
+- jak użytkownik ma odebrać zmianę lokalnie,
+- sekcję `Notatka do pracy`: **Co / Jak / Dlaczego / Test**.
 
 Nie używaj `Closes #...` dopóki użytkownik nie zrobi lokalnego odbioru.
+
+## Dziennik do pracy inżynierskiej
+
+Zwykły PR kodowy nie zmienia `docs/thesis/ENGINEERING_LOG.md`. Dzięki temu kilka równoległych gałęzi nie powoduje konfliktów w jednym pliku.
+
+Każdy istotny PR zawiera sekcję:
+
+```text
+## Notatka do pracy
+Co:
+Jak:
+Dlaczego:
+Test:
+```
+
+Po scaleniu zaakceptowaną treść dopisuje koordynator do `ENGINEERING_LOG.md`. Bezpośrednia edycja dziennika jest dozwolona dla zadań dokumentacyjnych, których zakresem jest sam dziennik.
 
 ## Po PR
 

@@ -53,9 +53,10 @@ Heartbeat aktualizuje status urządzenia. Zwykłe eventy sensorów są zapisywan
 6. Nie resetuj cudzej pracy, nie używaj `--force` i nie usuwaj nieznanych plików.
 7. Po zmianie uruchom adekwatne testy/build oraz `git diff --check`.
 8. Otwórz PR z `Refs #<issue>`.
-9. Po istotnej zmianie dopisz krótki wpis do `docs/thesis/ENGINEERING_LOG.md`: co zrobiono, jak, dlaczego i jak sprawdzono. Nie wpisuj sekretów ani niepotwierdzonych wyników testów.
-10. W PR wpisz: zakres, rzeczywisty wynik testów, ograniczenia i instrukcję lokalnego odbioru.
-11. Nie wykonuj automatycznego merge, deploy ani zamknięcia Issue. Użytkownik odbiera zmianę lokalnie.
+9. W opisie PR dodaj sekcję `Notatka do pracy`: krótko co zrobiono, jak to działa, dlaczego wybrano takie rozwiązanie i jak je sprawdzono.
+10. W zwykłym PR kodowym NIE edytuj `docs/thesis/ENGINEERING_LOG.md`. Po scaleniu zaakceptowaną notatkę dopisuje koordynator. Bezpośrednia edycja dziennika jest dozwolona tylko wtedy, gdy Issue dotyczy dokumentacji lub samego dziennika.
+11. W PR wpisz: zakres, rzeczywisty wynik testów, ograniczenia i instrukcję lokalnego odbioru.
+12. Nie wykonuj automatycznego merge, deploy ani zamknięcia Issue. Użytkownik odbiera zmianę lokalnie.
 
 ## Zasady modułów
 
