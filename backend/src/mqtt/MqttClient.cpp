@@ -7,6 +7,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <chrono>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -184,7 +185,11 @@ void MqttClient::start(
                 password
             )
             .clean_session(
-                true
+                false
+            )
+            .automatic_reconnect(
+                std::chrono::seconds(1),
+                std::chrono::seconds(30)
             )
             .finalize();
 
@@ -230,7 +235,7 @@ void MqttClient::connection_lost(
     }
 
     std::cerr
-        << '\n';
+        << "\n[MQTT] Automatic reconnect is enabled.\n";
 }
 
 void MqttClient::message_arrived(
