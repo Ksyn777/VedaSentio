@@ -112,6 +112,59 @@ int parse_two_digits(
         (text[position + 1] - '0');
 }
 
+int parse_four_digits(
+    const std::string& text,
+    std::size_t position
+)
+{
+    return
+        (text[position] - '0') * 1000 +
+        (text[position + 1] - '0') * 100 +
+        (text[position + 2] - '0') * 10 +
+        (text[position + 3] - '0');
+}
+
+bool is_leap_year(
+    int year
+)
+{
+    return
+        year % 400 == 0 ||
+        (
+            year % 4 == 0 &&
+            year % 100 != 0
+        );
+}
+
+int days_in_month(
+    int year,
+    int month
+)
+{
+    constexpr int DAYS[] = {
+        0,
+        31,
+        28,
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31
+    };
+
+    if (month == 2 && is_leap_year(year))
+    {
+        return 29;
+    }
+
+    return DAYS[month];
+}
+
 bool is_digit_range(
     const std::string& text,
     std::size_t begin,
@@ -159,6 +212,7 @@ bool is_valid_utc_timestamp(
         return false;
     }
 
+    const int year = parse_four_digits(timestamp, 0);
     const int month = parse_two_digits(timestamp, 5);
     const int day = parse_two_digits(timestamp, 8);
     const int hour = parse_two_digits(timestamp, 11);
@@ -166,10 +220,11 @@ bool is_valid_utc_timestamp(
     const int second = parse_two_digits(timestamp, 17);
 
     if (
+        year < 1 ||
         month < 1 ||
         month > 12 ||
         day < 1 ||
-        day > 31 ||
+        day > days_in_month(year, month) ||
         hour > 23 ||
         minute > 59 ||
         second > 59
@@ -208,6 +263,18 @@ SensorEvent parse_sensor_event(
     {
         throw std::runtime_error(
             "MQTT payload is too large."
+        );
+    }
+
+    if (
+        topic.empty() ||
+        topic.front() == '/' ||
+        topic.back() == '/'
+    )
+    {
+        throw std::runtime_error(
+            "Invalid MQTT topic. Expected: "
+            "vedasentio/{home_id}/{device_id}/event"
         );
     }
 
