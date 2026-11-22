@@ -109,8 +109,25 @@ int main()
             "Timestamp with milliseconds should be accepted."
         );
 
+        const SensorEvent leap_day =
+            parse_sensor_event(
+                "vedasentio/home_001/door_001/event",
+                "{\"timestamp\":\"2028-02-29T08:30:00Z\","
+                "\"event_type\":\"heartbeat\",\"value\":true}"
+            );
+
+        require(
+            leap_day.device_timestamp == "2028-02-29T08:30:00Z",
+            "Valid leap day should be accepted."
+        );
+
         expect_rejected(
             "wrong/home_001/door_001/event",
+            make_payload("heartbeat", true)
+        );
+
+        expect_rejected(
+            "vedasentio/home_001/door_001/event/",
             make_payload("heartbeat", true)
         );
 
@@ -139,6 +156,12 @@ int main()
         expect_rejected(
             "vedasentio/home_001/door_001/event",
             "{\"timestamp\":\"2026-11-22 08:30:00\","
+            "\"event_type\":\"heartbeat\",\"value\":true}"
+        );
+
+        expect_rejected(
+            "vedasentio/home_001/door_001/event",
+            "{\"timestamp\":\"2026-02-30T08:30:00Z\","
             "\"event_type\":\"heartbeat\",\"value\":true}"
         );
 
