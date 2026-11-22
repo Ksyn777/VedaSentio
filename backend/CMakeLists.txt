@@ -7,6 +7,8 @@ project(VedaSentioBackend LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+enable_testing()
+
 find_package(PahoMqttCpp CONFIG REQUIRED)
 find_package(libpqxx CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
@@ -192,4 +194,9 @@ target_link_libraries(
     vedasentio_event_parser_test
     PRIVATE
     vedasentio_event_parser
+)
+
+add_test(
+    NAME vedasentio_event_parser_test
+    COMMAND vedasentio_event_parser_test
 )
