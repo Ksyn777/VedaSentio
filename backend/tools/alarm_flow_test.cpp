@@ -67,6 +67,8 @@ void cleanup(
 
 int main()
 {
+    std::cout << std::unitbuf;
+
     const std::string conninfo = build_conninfo();
 
     const auto stamp =
