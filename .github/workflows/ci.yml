@@ -139,7 +139,10 @@ jobs:
 
   alarm-regression:
     name: Alarm regression
-    runs-on: ubuntu-latest
+    # libpqxx 7.x can double-free on Ubuntu 26.04/GCC 15 at process shutdown.
+    # Keep this regression job on Ubuntu 24.04 until the dependency is updated.
+    # https://github.com/jtv/libpqxx/issues/1195
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     services:
