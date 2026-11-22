@@ -74,6 +74,10 @@ struct DisposableFixture {
         try {
             pqxx::connection db(conninfo);
             pqxx::work tx(db);
+            // sensor_events has a restrictive FK to homes; clean child rows first.
+            tx.exec("DELETE FROM alarms WHERE home_id=$1", pqxx::params{HOME});
+            tx.exec("DELETE FROM sensor_events WHERE home_id=$1", pqxx::params{HOME});
+            tx.exec("DELETE FROM devices WHERE home_id=$1", pqxx::params{HOME});
             tx.exec("DELETE FROM homes WHERE id=$1", pqxx::params{HOME});
             tx.commit();
         } catch (const std::exception& e) {
