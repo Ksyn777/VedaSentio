@@ -139,8 +139,9 @@ jobs:
 
   alarm-regression:
     name: Alarm regression
-    # libpqxx 7.x can double-free on Ubuntu 26.04/GCC 15 at process shutdown.
-    # Keep this regression job on Ubuntu 24.04 until the dependency is updated.
+    # Use a stable runner and pinned patched libpqxx 7.10.7.
+    # Distro libpqxx 7.8 on 24.04 lacks the parameterized exec API;
+    # distro libpqxx 7.10 on 26.04 can double-free at process shutdown.
     # https://github.com/jtv/libpqxx/issues/1195
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -176,7 +177,16 @@ jobs:
       - name: Install test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpqxx-dev nlohmann-json3-dev postgresql-client
+          sudo apt-get install -y libpq-dev nlohmann-json3-dev postgresql-client
+
+      - name: Install patched libpqxx 7.10.7
+        run: |
+          git clone --depth 1 --branch 7.10.7 https://github.com/jtv/libpqxx.git "${RUNNER_TEMP}/libpqxx"
+          cmake -S "${RUNNER_TEMP}/libpqxx" -B "${RUNNER_TEMP}/libpqxx/build" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DSKIP_BUILD_TEST=ON
+          cmake --build "${RUNNER_TEMP}/libpqxx/build" --parallel 2
+          sudo cmake --install "${RUNNER_TEMP}/libpqxx/build"
+          sudo ldconfig
 
       - name: Run alarm regression test
         run: bash scripts/test_alarm_flow_linux.sh
