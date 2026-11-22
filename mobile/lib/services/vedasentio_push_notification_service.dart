@@ -185,7 +185,7 @@ class VedaSentioPushNotificationService {
           await _initializeFirebaseIfNeeded();
         }
         final token = _currentTokenReader != null
-            ? await _currentTokenReader!()
+            ? await _currentTokenReader()
             : await FirebaseMessaging.instance.getToken();
         if (token == null || token.trim().isEmpty) {
           tokenLookupFailed = true;
