@@ -111,6 +111,11 @@ marker "[ALARM-MQTT] SOS_RESOLVED"
 publish "$sos" '{"timestamp":"2026-11-22T10:00:03Z","event_type":"unknown_test","value":true}'
 publish "$sos" '{"timestamp":"2026-11-22T10:00:04Z","event_type":"sos_pressed","value":false}'
 marker "[ALARM-MQTT] INVALID_REJECTED"
+rejected_count="$(grep -Fc "[EVENT] Rejected:" "$test_log" || true)"
+if ((rejected_count < 2)); then
+    echo "[ALARM-MQTT] Expected two explicitly rejected MQTT messages, got $rejected_count" >&2
+    exit 1
+fi
 
 publish "$flood" '{"timestamp":"2026-11-22T10:00:05Z","event_type":"flood_detected","value":true}'
 marker "[ALARM-MQTT] FLOOD_OPENED"
@@ -121,4 +126,16 @@ publish "$flood" '{"timestamp":"2026-11-22T10:00:07Z","event_type":"flood_cleare
 wait "$test_pid"
 test_pid=""
 grep -Fq "[ALARM-MQTT] PASS:" "$test_log"
-echo "[ALARM-MQTT] PASS: MQTT -> PostgreSQL -> SOS/flood -> resolution; simulated push outage did not remove alarms."
+
+# Fixture destructor must remove children before parent records; fail if it didn't.
+remaining="$(psql -h "$VEDASENTIO_DB_HOST" -p "$VEDASENTIO_DB_PORT" \
+    -U "$VEDASENTIO_DB_USER" -d "$VEDASENTIO_DB_NAME" -At \
+    -c "SELECT (SELECT COUNT(*) FROM homes WHERE id='home_alarm_ci') +
+               (SELECT COUNT(*) FROM sensor_events WHERE home_id='home_alarm_ci') +
+               (SELECT COUNT(*) FROM alarms WHERE home_id='home_alarm_ci');")"
+if [[ "$remaining" != "0" ]]; then
+    echo "[ALARM-MQTT] Test rows were not cleaned up: $remaining" >&2
+    exit 1
+fi
+
+echo "[ALARM-MQTT] PASS: SOS/flood, push outage, rejected messages, and fixture cleanup."
