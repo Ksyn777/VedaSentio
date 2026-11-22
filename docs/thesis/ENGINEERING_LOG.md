@@ -105,6 +105,16 @@ Test fizycznego `door_opened/door_closed` oraz kolejne sensory wymagają ponowne
 
 **Test/odbiór:** zmiana organizacyjna i dokumentacyjna; nie zmienia kodu wykonawczego.
 
+
+## 2026-11-22 — walidacja kontraktu zdarzeń MQTT (#14)
+**Co:** wydzielono parser zdarzeń MQTT i dodano walidację topicu, identyfikatorów, typu zdarzenia, czasu UTC oraz wartości logicznej.
+
+**Jak:** backend akceptuje tylko znane `event_type`. Obecne zdarzenia reprezentują stan logiczny: otwarcie/wykrycie/SOS ma `value=true`, a zamknięcie/wyczyszczenie/rozwiązanie ma `value=false`. Parser ma osobny test bez potrzeby uruchamiania brokera.
+
+**Dlaczego:** błędna wiadomość z urządzenia nie powinna aktualizować statusu urządzenia, zapisywać zdarzenia ani tworzyć alarmu. Oddzielny parser jest mały i łatwy do testowania.
+
+**Test/odbiór:** dodano test poprawnego heartbeat i door_closed oraz odrzucenia błędnego topicu, ID, event_type, typu/wartości `value`, timestampu, brakującego pola i niepoprawnego JSON. Wynik build/test wymaga CI lub lokalnego uruchomienia.
+
 ---
 
 ## Szablon kolejnego wpisu
