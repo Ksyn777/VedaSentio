@@ -9,6 +9,7 @@ W tym etapie wprowadzono:
 - SQL `UPDATE mobile_push_tokens SET is_active=FALSE ... WHERE user_id=$1 AND fcm_token=$2`, zawsze parametryzowany; brak dostępu do tokenów innych użytkowników i idempotentne `200 {"status":"unregistered"}` dla nieistniejących/obcych tokenów (bez ujawniania właściciela);
 - rejestr `PushTokenRevocationRegistry` przechowuje **każdy token, którego rejestrację podjęto**, także jeśli POST zakończył się timeoutem (serwer mógł już zapisać wpis);
 - zatrzymanie rotacji i doczekanie zakończenia istniejących rejestracji przed rozpoczęciem DELETE; odświeżane tokeny tego samego telefonu są obsługiwane wszystkie;
+- odczyt aktualnego tokena z Firebase podczas logout, także jeśli został zarejestrowany w poprzednim uruchomieniu aplikacji; jeżeli odczyt tokena jest niemożliwy, logout **nie może zgłosić potwierdzonej revokacji**;
 - wylogowanie z połączeniem: najpierw potwierdzona dezaktywacja, następnie usunięcie lokalnej sesji;
 - przy awarii Internetu: **wyraźne ostrzeżenie**, opcje Ponów / Anuluj / Wyloguj mimo to; nie ma fałszywego potwierdzenia wyłączenia push;
 - po wygaśnięciu JWT automatyczne wylogowanie bez żądania, którego i tak nie można autoryzować, z komunikatem ostrzegającym o pozostawionym tokenie.

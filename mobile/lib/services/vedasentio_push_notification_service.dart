@@ -10,6 +10,12 @@ import 'push_token_registration_coordinator.dart';
 import 'push_token_revocation_registry.dart';
 
 class VedaSentioPushNotificationService {
+  VedaSentioPushNotificationService({
+    Future<String?> Function()? currentTokenReader,
+  }) : _currentTokenReader = currentTokenReader;
+
+  final Future<String?> Function()? _currentTokenReader;
+
   StreamSubscription<RemoteMessage>?
       _notificationOpenedSubscription;
   PushTokenRegistrationCoordinator? _tokenRegistration;
@@ -170,9 +176,32 @@ class VedaSentioPushNotificationService {
       await previousRegistration.idle;
     }
 
-    return _revokePending.revokeAll(
+    // A token from an earlier app start may still be active in PostgreSQL
+    // even if this session never completed its initial registration.
+    var tokenLookupFailed = false;
+    if (_isSupportedMobilePlatform() || _currentTokenReader != null) {
+      try {
+        if (_currentTokenReader == null) {
+          await _initializeFirebaseIfNeeded();
+        }
+        final token = _currentTokenReader != null
+            ? await _currentTokenReader!()
+            : await FirebaseMessaging.instance.getToken();
+        if (token == null || token.trim().isEmpty) {
+          tokenLookupFailed = true;
+        } else {
+          _revokePending.noteAttempt(token);
+        }
+      } catch (_) {
+        // No reassurance if the current token cannot be checked.
+        tokenLookupFailed = true;
+      }
+    }
+
+    final allRevoked = await _revokePending.revokeAll(
       authService.unregisterMobilePushNotificationToken,
     );
+    return allRevoked && !tokenLookupFailed;
   }
 
   /// Called only after local logout. Failed tokens must not be retried
