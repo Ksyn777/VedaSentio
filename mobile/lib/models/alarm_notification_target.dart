@@ -30,7 +30,7 @@ class AlarmNotificationTarget {
     if (homeId.isEmpty ||
         homeId.length > 128 ||
         homeId.contains('/') ||
-        homeId.contains(r'\') ||
+        homeId.contains('\\') ||
         homeId.codeUnits.any((code) => code < 32 || code == 127) ||
         alarmId == null ||
         alarmId <= 0) {
