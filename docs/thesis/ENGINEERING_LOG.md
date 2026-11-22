@@ -115,6 +115,16 @@ Test fizycznego `door_opened/door_closed` oraz kolejne sensory wymagają ponowne
 
 **Test/odbiór:** sprawdzono publiczny `master`: nie znaleziono `secrets.h` ani plików `.env`. Konfigurację uruchomieniową sprawdzimy później lokalnie na laptopie.
 
+
+## 2026-11-22 — automatyczna kontrola GitHub Actions (#24)
+**Co:** dodano trzy niezależne joby CI dla backendu C++, Fluttera i firmware ESP32.
+
+**Jak:** backend buduje się na Windows z vcpkg przypiętym do wersji z manifestu; Flutter przechodzi analizę statyczną i testy; firmware kompiluje się w PlatformIO z przykładową konfiguracją bez sekretów.
+
+**Dlaczego:** przy pracy z telefonu i Codexem każda zmiana powinna dostać automatyczną kontrolę zanim zostanie scalona. Rozdzielenie jobów pokazuje od razu, która część systemu ma problem.
+
+**Test/odbiór:** workflow zostanie zweryfikowany przez pierwszy run GitHub Actions po otwarciu PR. Testy sprzętowe pozostają ręczne.
+
 ---
 
 ## Szablon kolejnego wpisu
