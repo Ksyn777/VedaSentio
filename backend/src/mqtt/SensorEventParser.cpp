@@ -6,7 +6,6 @@
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
-#include <string_view>
 #include <vector>
 
 namespace
@@ -14,7 +13,7 @@ namespace
 constexpr std::size_t MAX_PAYLOAD_SIZE = 4096;
 constexpr std::size_t MAX_ID_LENGTH = 64;
 
-const std::array<std::string_view, 13> SUPPORTED_EVENT_TYPES = {
+const std::array<const char*, 13> SUPPORTED_EVENT_TYPES = {
     "heartbeat",
     "door_opened",
     "door_closed",
@@ -77,7 +76,7 @@ bool is_supported_event_type(
     const std::string& event_type
 )
 {
-    for (const std::string_view supported : SUPPORTED_EVENT_TYPES)
+    for (const char* supported : SUPPORTED_EVENT_TYPES)
     {
         if (event_type == supported)
         {
