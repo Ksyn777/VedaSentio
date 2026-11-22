@@ -165,3 +165,22 @@ target_link_libraries(
     libpqxx::pqxx
     nlohmann_json::nlohmann_json
 )
+
+# Run pure FCM response parsing checks in the existing Windows CI CTest step.
+enable_testing()
+
+add_executable(
+    vedasentio_fcm_response_test
+    tools/fcm_response_parser_test.cpp
+)
+
+target_link_libraries(
+    vedasentio_fcm_response_test
+    PRIVATE
+    nlohmann_json::nlohmann_json
+)
+
+add_test(
+    NAME fcm_response_parser
+    COMMAND vedasentio_fcm_response_test
+)
