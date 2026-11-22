@@ -22,9 +22,7 @@ $headers = @{
 }
 
 # Check API authorization before publishing any test event.
-$previousEvents = @(
-    Invoke-RestMethod -Method Get -Uri $eventsUrl -Headers $headers -TimeoutSec 5
-)
+$previousEvents = Invoke-RestMethod -Method Get -Uri $eventsUrl -Headers $headers -TimeoutSec 5
 
 [long]$lastId = 0
 foreach ($event in $previousEvents) {
@@ -46,26 +44,25 @@ $publisher = Join-Path $PSScriptRoot "mqtt_test_door_contact.ps1"
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 
 while ([DateTime]::UtcNow -lt $deadline) {
-    $events = @(
-        Invoke-RestMethod -Method Get -Uri $eventsUrl -Headers $headers -TimeoutSec 5
-    )
+    $events = Invoke-RestMethod -Method Get -Uri $eventsUrl -Headers $headers -TimeoutSec 5
 
-    $saved = @(
-        $events | Where-Object {
-            $null -ne $_ -and
-            [long]$_.id -gt $lastId -and
-            $_.home_id -eq $homeId -and
-            $_.device_id -eq $deviceId -and
-            $_.event_type -eq $eventType -and
-            $_.value -is [bool] -and
-            $_.value -eq $expectedValue
+    foreach ($event in $events) {
+        if ($null -eq $event) {
+            continue
         }
-    )
 
-    if ($saved.Count -gt 0) {
-        Write-Host "[SMOKE] PASS - backend zapisal nowe zdarzenie $eventType."
-        Write-Host "[SMOKE] Event ID: $($saved[0].id)"
-        exit 0
+        $correctEvent = [long]$event.id -gt $lastId -and
+            $event.home_id -eq $homeId -and
+            $event.device_id -eq $deviceId -and
+            $event.event_type -eq $eventType -and
+            $event.value -is [bool] -and
+            $event.value -eq $expectedValue
+
+        if ($correctEvent) {
+            Write-Host "[SMOKE] PASS - backend zapisal nowe zdarzenie $eventType."
+            Write-Host "[SMOKE] Event ID: $($event.id)"
+            exit 0
+        }
     }
 
     Start-Sleep -Milliseconds 500
