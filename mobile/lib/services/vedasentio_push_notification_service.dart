@@ -13,6 +13,7 @@ class VedaSentioPushNotificationService {
       _notificationOpenedSubscription;
   PushTokenRegistrationCoordinator? _tokenRegistration;
   int _registrationGeneration = 0;
+  final Set<String> _registeredTokens = <String>{};
 
   Future<void> startAlarmNotificationOpenHandling(
     void Function(
@@ -119,10 +120,16 @@ class VedaSentioPushNotificationService {
 
       final platform = _getMobilePlatformName();
       final registration = PushTokenRegistrationCoordinator(
-        (token) => authService.registerMobilePushNotificationToken(
-          token,
-          platform,
-        ),
+        (token) async {
+          await authService.registerMobilePushNotificationToken(
+            token,
+            platform,
+          );
+          // A completed registration may race with logout. Keep every
+          // token registered during this session until the backend confirms
+          // its revocation, including old tokens after rotation.
+          _registeredTokens.add(token);
+        },
         onStreamError: () {
           debugPrint('[PUSH] Nie udało się odczytać nowego tokena FCM.');
         },
@@ -147,6 +154,38 @@ class VedaSentioPushNotificationService {
     _registrationGeneration++;
     _tokenRegistration?.stop();
     _tokenRegistration = null;
+  }
+
+  /// Returns true only if the backend confirmed revocation of every
+  /// successfully registered token from this session.
+  ///
+  /// Stops refreshes and waits for in-flight HTTP registrations before
+  /// revoking, so a late registration cannot overwrite a successful logout.
+  Future<bool> unregisterCurrentMobileDeviceForLogout(
+    AuthService authService,
+  ) async {
+    final previousRegistration = _tokenRegistration;
+    stopMobileTokenRegistration();
+    if (previousRegistration != null) {
+      await previousRegistration.idle;
+    }
+
+    var allRevoked = true;
+    for (final token in _registeredTokens.toList()) {
+      try {
+        await authService.unregisterMobilePushNotificationToken(token);
+        _registeredTokens.remove(token);
+      } catch (_) {
+        allRevoked = false;
+      }
+    }
+    return allRevoked;
+  }
+
+  /// Called only after local logout. Failed tokens must not be retried
+  /// under the JWT of another account.
+  void clearRegisteredTokenHistory() {
+    _registeredTokens.clear();
   }
 
   Future<void> _initializeFirebaseIfNeeded() async {
@@ -191,6 +230,7 @@ class VedaSentioPushNotificationService {
 
   void dispose() {
     stopMobileTokenRegistration();
+    clearRegisteredTokenHistory();
     final subscription = _notificationOpenedSubscription;
     _notificationOpenedSubscription = null;
     if (subscription != null) {

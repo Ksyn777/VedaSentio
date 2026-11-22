@@ -12,12 +12,14 @@ class DashboardScreen extends StatefulWidget {
     required this.session,
     required this.auth,
     required this.onLogout,
+    required this.onSessionExpired,
     super.key,
   });
 
   final SessionData session;
   final AuthService auth;
   final Future<void> Function() onLogout;
+  final Future<void> Function() onSessionExpired;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -37,7 +39,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         builder: (context) => HomeDetailsScreen(
           home: home,
           authService: widget.auth,
-          onSessionExpired: widget.onLogout,
+          onSessionExpired: widget.onSessionExpired,
         ),
       ),
     );
@@ -264,12 +266,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ActivityScreen(
             session: widget.session,
             auth: widget.auth,
-            onSessionExpired: widget.onLogout,
+            onSessionExpired: widget.onSessionExpired,
           ),
           AlarmHistoryScreen(
             session: widget.session,
             auth: widget.auth,
-            onSessionExpired: widget.onLogout,
+            onSessionExpired: widget.onSessionExpired,
           ),
           AccountScreen(
             session: widget.session,
