@@ -183,7 +183,12 @@ void main() {
 
     await pumpHome(tester, auth);
     final button = find.text('Potwierdź alarm');
-    await tester.ensureVisible(button);
+    // The alarm row is lazy-built below the fold by ListView.
+    await tester.scrollUntilVisible(
+      button,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pump();
