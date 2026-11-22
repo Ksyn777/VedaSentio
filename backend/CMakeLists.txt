@@ -66,6 +66,22 @@ target_link_libraries(
     libpqxx::pqxx
 )
 
+add_library(vedasentio_event_parser STATIC
+    src/mqtt/SensorEventParser.cpp
+)
+
+target_include_directories(
+    vedasentio_event_parser
+    PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(
+    vedasentio_event_parser
+    PUBLIC
+    nlohmann_json::nlohmann_json
+)
+
 add_executable(
     vedasentio_backend
     src/main.cpp
@@ -100,6 +116,7 @@ target_link_libraries(
     vedasentio_security
     vedasentio_auth
     vedasentio_identity
+    vedasentio_event_parser
 )
 
 add_executable(
@@ -164,4 +181,15 @@ target_link_libraries(
     PRIVATE
     libpqxx::pqxx
     nlohmann_json::nlohmann_json
+)
+
+add_executable(
+    vedasentio_event_parser_test
+    tools/sensor_event_parser_test.cpp
+)
+
+target_link_libraries(
+    vedasentio_event_parser_test
+    PRIVATE
+    vedasentio_event_parser
 )
