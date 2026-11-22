@@ -26,6 +26,10 @@ public:
         const std::string& password
     );
 
+    void connected(
+        const std::string& cause
+    ) override;
+
     void connection_lost(
         const std::string& cause
     ) override;
