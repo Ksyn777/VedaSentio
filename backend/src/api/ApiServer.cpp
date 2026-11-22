@@ -1385,6 +1385,73 @@ void ApiServer::start(
         }
     );
 
+    // Authenticated, idempotent revocation. Never disclose token ownership.
+    server.Post(
+        "/api/mobile-devices/push-token/unregister",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user = authenticated_user(
+                request, response, users_, jwt_
+            );
+            if (!user.has_value())
+            {
+                return;
+            }
+
+            if (request.body.size() > 16384)
+            {
+                send_json(response, {{"error", "Request body is too large."}}, 413);
+                return;
+            }
+
+            nlohmann::json body;
+            try
+            {
+                body = nlohmann::json::parse(request.body);
+            }
+            catch (const nlohmann::json::exception&)
+            {
+                send_json(response, {{"error", "Invalid JSON body."}}, 400);
+                return;
+            }
+
+            if (!body.is_object() ||
+                !body.contains("fcm_token") ||
+                !body["fcm_token"].is_string())
+            {
+                send_json(response, {{"error", "FCM token is required."}}, 400);
+                return;
+            }
+
+            const auto token = body["fcm_token"].get<std::string>();
+            if (token.empty() || token.size() > 8192)
+            {
+                send_json(response, {{"error", "Invalid FCM token."}}, 400);
+                return;
+            }
+
+            try
+            {
+                // SQL scopes the update to the authenticated user ID.
+                database_.deactivate_mobile_push_notification_token(
+                    user->id, token
+                );
+                // Same response for unknown, already revoked and other users'
+                // tokens, to avoid revealing whether a token exists.
+                send_json(response, {{"status", "unregistered"}});
+            }
+            catch (const std::exception&)
+            {
+                // Never log raw FCM token or database exception text here.
+                std::cerr << "[API] mobile token revocation failed.\n";
+                send_json(response, {{"error", "Unable to unregister device."}}, 500);
+            }
+        }
+    );
+
     std::cout
         << "[API] Listening on http://"
         << host

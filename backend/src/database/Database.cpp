@@ -452,3 +452,28 @@ void Database::save_mobile_push_notification_token(
 
     transaction.commit();
 }
+
+
+void Database::deactivate_mobile_push_notification_token(
+    long long user_id,
+    const std::string& firebase_cloud_messaging_token
+) const
+{
+    pqxx::connection connection(connection_string_);
+    pqxx::work transaction(connection);
+
+    transaction.exec(
+        R"SQL(
+            UPDATE mobile_push_tokens
+            SET is_active = FALSE, updated_at = NOW()
+            WHERE user_id = $1
+              AND fcm_token = $2
+              AND is_active = TRUE
+        )SQL",
+        pqxx::params{
+            user_id,
+            firebase_cloud_messaging_token
+        }
+    );
+    transaction.commit();
+}

@@ -52,6 +52,11 @@ public:
         const std::string& mobile_platform
     ) const;
 
+    void deactivate_mobile_push_notification_token(
+        long long user_id,
+        const std::string& firebase_cloud_messaging_token
+    ) const;
+
 private:
     std::string connection_string_;
 };
