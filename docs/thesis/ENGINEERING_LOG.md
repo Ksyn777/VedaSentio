@@ -106,14 +106,14 @@ Test fizycznego `door_opened/door_closed` oraz kolejne sensory wymagają ponowne
 **Test/odbiór:** zmiana organizacyjna i dokumentacyjna; nie zmienia kodu wykonawczego.
 
 
-## 2026-11-22 — walidacja kontraktu zdarzeń MQTT (#14)
-**Co:** wydzielono parser zdarzeń MQTT i dodano walidację topicu, identyfikatorów, typu zdarzenia, czasu UTC oraz wartości logicznej.
+## 2026-11-22 — bezpieczna konfiguracja developerska (#23)
+**Co:** dodano `.env.example`, `secrets.example.h`, reguły ignorowania sekretów oraz krótki opis konfiguracji lokalnej.
 
-**Jak:** backend akceptuje tylko znane `event_type`. Obecne zdarzenia reprezentują stan logiczny: otwarcie/wykrycie/SOS ma `value=true`, a zamknięcie/wyczyszczenie/rozwiązanie ma `value=false`. Parser ma osobny test bez potrzeby uruchamiania brokera.
+**Jak:** prawdziwe hasła i klucze pozostają wyłącznie poza repo. PostgreSQL i REST API pozostają dostępne lokalnie, a MQTT jest wystawione do sieci LAN tylko dlatego, że fizyczne ESP32 musi połączyć się z brokerem.
 
-**Dlaczego:** błędna wiadomość z urządzenia nie powinna aktualizować statusu urządzenia, zapisywać zdarzenia ani tworzyć alarmu. Oddzielny parser jest mały i łatwy do testowania.
+**Dlaczego:** publiczne repozytorium powinno pokazywać sposób konfiguracji projektu bez ujawniania danych dostępowych. Rozdzielenie konfiguracji od kodu zmniejsza ryzyko przypadkowego opublikowania sekretów.
 
-**Test/odbiór:** dodano test poprawnego heartbeat i door_closed oraz odrzucenia błędnego topicu, ID, event_type, typu/wartości `value`, timestampu, brakującego pola i niepoprawnego JSON. Wynik build/test wymaga CI lub lokalnego uruchomienia.
+**Test/odbiór:** sprawdzono publiczny `master`: nie znaleziono `secrets.h` ani plików `.env`. Konfigurację uruchomieniową sprawdzimy później lokalnie na laptopie.
 
 ---
 
