@@ -34,7 +34,7 @@ Drugi job `PostgreSQL + MQTT offline alarm recovery` w tym samym workflow urucha
 - przypiętą do konkretnego commita poprawioną bibliotekę libpqxx 7.10.7,
 - osobny Mosquitto na `127.0.0.1:28884` (bez zewnętrznej publikacji), bez Firebase.
 
-Test uruchamia rzeczywiste zapytania do PostgreSQL. Sprawdza kolejno: heartbeat aktualizuje `last_seen` i nie tworzy rekordu zdarzenia; błędny JSON nie zmienia stanu urządzenia; ustawienie `last_seen` na trzy minuty wstecz powoduje stan offline; dwa wywołania wykrycia offline tworzą maksymalnie **jeden aktywny** alarm; restart Mosquitto i nowy heartbeat automatycznie przywracają stan online oraz rozwiązują alarm; prawidłowe `door_opened` trafia do bazy dokładnie raz.
+Test uruchamia rzeczywiste zapytania do PostgreSQL. Sprawdza kolejno: heartbeat aktualizuje `last_seen` i nie tworzy rekordu zdarzenia; błędny JSON nie zmienia stanu urządzenia; ustawienie `last_seen` na trzy minuty wstecz powoduje stan offline; dwa wywołania wykrycia offline tworzą maksymalnie **jeden aktywny** alarm; restart Mosquitto i nowy heartbeat automatycznie przywracają stan online oraz rozwiązują alarm; po **drugim z rzędu restarcie brokera** prawidłowe `door_opened` trafia do bazy dokładnie raz.
 
 Jest to test integracyjny **prawdziwej bazy i brokera**, lecz sztucznie wywołuje otwarcie alarmu offline (harmonogram `main.cpp` nie jest uruchamiany). Nie potwierdza jeszcze działania fizycznego ESP32, API ani Fluttera. Test zakłada lokalną bazę o nazwie `vedasentio_mqtt_ci` i odmawia użycia innego hosta lub nazwy bazy, aby przypadkowo nie zmodyfikować danych użytkownika.
 

@@ -123,7 +123,7 @@ mosquitto_pub -h 127.0.0.1 -p "$VEDASENTIO_SMOKE_PORT" -q 1 -t "$topic" \
 wait_marker "[PG] OFFLINE_ALARM_OPENED" 20
 grep -Fq "is not registered" "$test_log"
 grep -Fq "is inactive" "$test_log"
-grep -Fq "timestamp" "$test_log"
+grep -Fq "must use UTC ISO-8601 format" "$test_log"
 
 before="$(grep -Fc "[MQTT] Subscription requested:" "$test_log" || true)"
 echo "[PG] Stopping disposable broker..."
@@ -152,6 +152,38 @@ sleep 1
 mosquitto_pub -h 127.0.0.1 -p "$VEDASENTIO_SMOKE_PORT" -q 1 -t "$topic" \
     -m '{"timestamp":"2026-11-22T12:00:02Z","event_type":"heartbeat","value":true}'
 wait_marker "[PG] HEARTBEAT_RESOLVED_OFFLINE" 25
+
+# Test a second consecutive broker restart: automatic recovery must persist.
+before="$(grep -Fc "[MQTT] Subscription requested:" "$test_log" || true)"
+lost_before="$(grep -Fc "[MQTT] Connection lost" "$test_log" || true)"
+echo "[PG] Repeating broker restart to catch stale callbacks/subscriptions..."
+kill "$broker_pid"
+wait "$broker_pid" 2>/dev/null || true
+broker_pid=""
+for _ in $(seq 1 75); do
+    lost_count="$(grep -Fc "[MQTT] Connection lost" "$test_log" || true)"
+    if ((lost_count > lost_before)); then break; fi
+    sleep 0.2
+done
+if ((lost_count <= lost_before)); then
+    echo "[PG] Second broker loss was not reported" >&2
+    exit 1
+fi
+start_broker
+reconnected=0
+for _ in $(seq 1 300); do
+    count="$(grep -Fc "[MQTT] Subscription requested:" "$test_log" || true)"
+    if ((count > before)); then
+        reconnected=1
+        break
+    fi
+    sleep 0.2
+done
+if ((reconnected == 0)); then
+    echo "[PG] Second reconnect did not resubscribe" >&2
+    exit 1
+fi
+sleep 1
 
 mosquitto_pub -h 127.0.0.1 -p "$VEDASENTIO_SMOKE_PORT" -q 1 -t "$topic" \
     -m '{"timestamp":"2026-11-22T12:00:03Z","event_type":"door_opened","value":true}'
