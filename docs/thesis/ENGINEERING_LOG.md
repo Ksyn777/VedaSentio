@@ -105,6 +105,16 @@ Test fizycznego `door_opened/door_closed` oraz kolejne sensory wymagają ponowne
 
 **Test/odbiór:** zmiana organizacyjna i dokumentacyjna; nie zmienia kodu wykonawczego.
 
+
+## 2026-11-22 — bezpieczna konfiguracja developerska (#23)
+**Co:** dodano `.env.example`, `secrets.example.h`, reguły ignorowania sekretów oraz krótki opis konfiguracji lokalnej.
+
+**Jak:** prawdziwe hasła i klucze pozostają wyłącznie poza repo. PostgreSQL i REST API pozostają dostępne lokalnie, a MQTT jest wystawione do sieci LAN tylko dlatego, że fizyczne ESP32 musi połączyć się z brokerem.
+
+**Dlaczego:** publiczne repozytorium powinno pokazywać sposób konfiguracji projektu bez ujawniania danych dostępowych. Rozdzielenie konfiguracji od kodu zmniejsza ryzyko przypadkowego opublikowania sekretów.
+
+**Test/odbiór:** sprawdzono publiczny `master`: nie znaleziono `secrets.h` ani plików `.env`. Konfigurację uruchomieniową sprawdzimy później lokalnie na laptopie.
+
 ---
 
 ## Szablon kolejnego wpisu
