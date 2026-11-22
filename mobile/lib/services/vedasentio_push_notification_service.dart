@@ -7,13 +7,14 @@ import 'package:flutter/foundation.dart';
 import '../models/alarm_notification_target.dart';
 import 'auth_service.dart';
 import 'push_token_registration_coordinator.dart';
+import 'push_token_revocation_registry.dart';
 
 class VedaSentioPushNotificationService {
   StreamSubscription<RemoteMessage>?
       _notificationOpenedSubscription;
   PushTokenRegistrationCoordinator? _tokenRegistration;
   int _registrationGeneration = 0;
-  final Set<String> _registeredTokens = <String>{};
+  final PushTokenRevocationRegistry _revokePending = PushTokenRevocationRegistry();
 
   Future<void> startAlarmNotificationOpenHandling(
     void Function(
@@ -121,14 +122,13 @@ class VedaSentioPushNotificationService {
       final platform = _getMobilePlatformName();
       final registration = PushTokenRegistrationCoordinator(
         (token) async {
+          // The backend may commit a POST even if the response times out.
+          // Treat every attempted token as potentially registered.
+          _revokePending.noteAttempt(token);
           await authService.registerMobilePushNotificationToken(
             token,
             platform,
           );
-          // A completed registration may race with logout. Keep every
-          // token registered during this session until the backend confirms
-          // its revocation, including old tokens after rotation.
-          _registeredTokens.add(token);
         },
         onStreamError: () {
           debugPrint('[PUSH] Nie udało się odczytać nowego tokena FCM.');
@@ -170,22 +170,15 @@ class VedaSentioPushNotificationService {
       await previousRegistration.idle;
     }
 
-    var allRevoked = true;
-    for (final token in _registeredTokens.toList()) {
-      try {
-        await authService.unregisterMobilePushNotificationToken(token);
-        _registeredTokens.remove(token);
-      } catch (_) {
-        allRevoked = false;
-      }
-    }
-    return allRevoked;
+    return _revokePending.revokeAll(
+      authService.unregisterMobilePushNotificationToken,
+    );
   }
 
   /// Called only after local logout. Failed tokens must not be retried
   /// under the JWT of another account.
   void clearRegisteredTokenHistory() {
-    _registeredTokens.clear();
+    _revokePending.clear();
   }
 
   Future<void> _initializeFirebaseIfNeeded() async {
