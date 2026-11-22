@@ -276,14 +276,21 @@ class AuthService {
   ) async {
     final accessToken = await _requireToken();
 
-    await _api.postAuthorized(
-      '/api/mobile-devices/push-token',
-      accessToken,
-      body: {
-        'fcm_token': firebaseCloudMessagingToken,
-        'platform': mobilePlatformName,
-      },
-    );
+    try {
+      await _api.postAuthorized(
+        '/api/mobile-devices/push-token',
+        accessToken,
+        body: {
+          'fcm_token': firebaseCloudMessagingToken,
+          'platform': mobilePlatformName,
+        },
+      );
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _tokens.clear();
+      }
+      rethrow;
+    }
   }
 
   Future<void> logout() =>

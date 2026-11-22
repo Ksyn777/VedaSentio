@@ -129,15 +129,8 @@ class _AuthGateState
       return;
     }
 
-    Home? selectedHome;
-
-    for (Home home in currentSession.homes) {
-      if (home.id ==
-          notificationTarget.homeId) {
-        selectedHome = home;
-        break;
-      }
-    }
+    final Home? selectedHome =
+        notificationTarget.accessibleHome(currentSession.homes);
 
     if (selectedHome == null) {
       _pendingAlarmNotificationTarget =

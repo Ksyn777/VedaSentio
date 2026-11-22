@@ -1,3 +1,5 @@
+import 'home.dart';
+
 class AlarmNotificationTarget {
   const AlarmNotificationTarget({
     required this.homeId,
@@ -29,16 +31,17 @@ class AlarmNotificationTarget {
     }
 
     if (alarmIdValue is String) {
-      alarmId = int.tryParse(
-        alarmIdValue,
-      );
+      final digits = alarmIdValue.trim();
+      if (RegExp(r'^[0-9]+$').hasMatch(digits)) {
+        alarmId = int.tryParse(digits);
+      }
     }
 
     if (homeId.isEmpty) {
       return null;
     }
 
-    if (alarmId == null) {
+    if (alarmId == null || alarmId <= 0) {
       return null;
     }
 
@@ -46,5 +49,15 @@ class AlarmNotificationTarget {
       homeId: homeId,
       alarmId: alarmId,
     );
+  }
+
+  // Client-side membership check; server-side JWT checks are still required.
+  Home? accessibleHome(Iterable<Home> homes) {
+    for (final home in homes) {
+      if (home.id == homeId) {
+        return home;
+      }
+    }
+    return null;
   }
 }

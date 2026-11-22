@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/alarm_notification_target.dart';
 import 'auth_service.dart';
+import 'push_token_registration.dart';
 
 class VedaSentioPushNotificationService {
   StreamSubscription<RemoteMessage>?
@@ -110,27 +111,16 @@ class VedaSentioPushNotificationService {
       String? firebaseCloudMessagingToken =
           await firebaseMessaging.getToken();
 
-      if (firebaseCloudMessagingToken == null) {
-        return false;
-      }
-
-      if (firebaseCloudMessagingToken.isEmpty) {
-        return false;
-      }
-
-      String mobilePlatformName =
-          _getMobilePlatformName();
-
-      await authService.registerMobilePushNotificationToken(
-        firebaseCloudMessagingToken,
-        mobilePlatformName,
+      final registered = await PushTokenRegistration.register(
+        auth: authService,
+        fcmToken: firebaseCloudMessagingToken,
+        platform: _getMobilePlatformName(),
       );
 
-      debugPrint(
-        '[PUSH] Urządzenie mobilne zostało zarejestrowane.',
-      );
-
-      return true;
+      if (registered) {
+        debugPrint('[PUSH] Urządzenie mobilne zostało zarejestrowane.');
+      }
+      return registered;
     } catch (error) {
       debugPrint(
         '[PUSH] Nie udało się zarejestrować urządzenia: $error',
