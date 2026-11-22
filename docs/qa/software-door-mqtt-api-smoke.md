@@ -25,17 +25,22 @@ Z katalogu głównego repozytorium:
 
 Można podać `-TimeoutSeconds 30`, jeśli środowisko odpowiada wolno.
 
-Skrypt odczytuje największy dotychczasowy numer ID, publikuje zdarzenie
-przez istniejący skrypt MQTT i sprawdza API przez maksymalnie 15 sekund.
-Wynik PASS oznacza, że znaleziono **nowy** rekord dla home_001/door_001,
-właściwego event_type i wartości logicznej. Przy błędzie API lub braku
+Skrypt odczytuje największy dotychczasowy numer ID, tworzy **własny
+znacznik czasu UTC**, publikuje zdarzenie przez istniejący skrypt MQTT
+i sprawdza API przez maksymalnie 15 sekund. Wynik PASS oznacza, że
+znaleziono **nowy** rekord dla home_001/door_001, właściwego event_type,
+wartości logicznej oraz **identycznego czasu zdarzenia** (porównanie
+z dokładnością do milisekundy). Sam fakt publikacji nie daje PASS. Przy błędzie API lub braku
 rekordu zgłaszany jest błąd zamiast fałszywego sukcesu.
 
 ## Zakres i ograniczenia
 
 - Wykonuj tylko w izolowanym środowisku testowym, ponieważ tworzy dane.
-- Podczas pomiaru nie uruchamiaj równoległego publikatora dla door_001.
-  Test identyfikuje rekord po nowym ID, urządzeniu, typie i wartości.
+- Współbieżne zdarzenie z innego procesu nie powinno zostać uznane za
+  nasze tylko dlatego, że ma taki sam typ i nowszy ID. Test porównuje
+  również znacznik czasu UTC wygenerowany przed publikacją.
+- Jak każdy test identyfikujący zdarzenie po czasie, zakłada brak
+  celowego podszywania się z identycznym stemplem czasowym i danymi.
 - Nie dowodzi działania interfejsu Flutter, Firebase, GPIO ani połączenia ESP32.
 - GitHub Actions sprawdza **składnię** PowerShell; integracyjny smoke
   wymaga lokalnego Docker/Windows i uruchomionego backendu.

@@ -34,11 +34,21 @@ foreach ($event in $previousEvents) {
 $eventType = "door_$State"
 $expectedValue = $State -eq "opened"
 
+# A unique event timestamp distinguishes our publication from another
+# identical event sent by a different test process.
+$timestampUtc = (Get-Date).ToUniversalTime().ToString(
+    "yyyy-MM-ddTHH:mm:ss.fffZ"
+)
+$expectedTimestampMs = [DateTimeOffset]::Parse(
+    $timestampUtc,
+    [Globalization.CultureInfo]::InvariantCulture
+).ToUnixTimeMilliseconds()
+
 Write-Host "[SMOKE] Ostatni zapisany event ID: $lastId"
 Write-Host "[SMOKE] Wysylanie zdarzenia: $eventType"
 
 $publisher = Join-Path $PSScriptRoot "mqtt_test_door_contact.ps1"
-& $publisher -State $State
+& $publisher -State $State -TimestampUtc $timestampUtc
 
 # A successful publish alone does not prove that the backend saved it.
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
@@ -58,10 +68,25 @@ while ([DateTime]::UtcNow -lt $deadline) {
             $event.value -is [bool] -and
             $event.value -eq $expectedValue
 
-        if ($correctEvent) {
-            Write-Host "[SMOKE] PASS - backend zapisal nowe zdarzenie $eventType."
+        if (-not $correctEvent) {
+            continue
+        }
+
+        try {
+            $receivedTimestampMs = [DateTimeOffset]::Parse(
+                [string]$event.device_timestamp,
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::AssumeUniversal
+            ).ToUnixTimeMilliseconds()
+        }
+        catch {
+            continue
+        }
+
+        if ($receivedTimestampMs -eq $expectedTimestampMs) {
+            Write-Host "[SMOKE] PASS - backend zapisal nasz event $eventType."
             Write-Host "[SMOKE] Event ID: $($event.id)"
-            exit 0
+            return
         }
     }
 

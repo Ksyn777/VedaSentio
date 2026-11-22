@@ -26,19 +26,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate local MQTT smoke script syntax
+      - name: Validate MQTT smoke and publisher PowerShell syntax
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path '.\scripts\smoke_door_mqtt_api.ps1').Path,
-            [ref] $tokens,
-            [ref] $errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          $scripts = @(
+            '.\scripts\smoke_door_mqtt_api.ps1',
+            '.\scripts\mqtt_test_door_contact.ps1',
+            '.\scripts\mqtt_test_event.ps1'
+          )
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script).Path,
+              [ref] $tokens,
+              [ref] $errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$script : $($_.Message)" }
+              exit 1
+            }
           }
 
       - name: Cache vcpkg binaries
