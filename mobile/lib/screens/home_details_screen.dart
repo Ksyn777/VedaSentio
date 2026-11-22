@@ -482,6 +482,7 @@ class _HomeDetailsScreenState
         _LiveMonitoringCard(
           lastUpdatedLabel: _lastUpdatedLabel(),
           refreshSeconds: _autoRefreshInterval.inSeconds,
+          isStale: _errorMessage != null,
         ),
         const SizedBox(
           height: 14,
@@ -873,10 +874,12 @@ class _LiveMonitoringCard extends StatelessWidget {
   const _LiveMonitoringCard({
     required this.lastUpdatedLabel,
     required this.refreshSeconds,
+    required this.isStale,
   });
 
   final String lastUpdatedLabel;
   final int refreshSeconds;
+  final bool isStale;
 
   @override
   Widget build(
@@ -896,10 +899,12 @@ class _LiveMonitoringCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.sync,
+          Icon(
+            isStale ? Icons.cloud_off_outlined : Icons.sync,
             size: 20,
-            color: Color(0xFFB85C3B),
+            color: isStale
+                ? const Color(0xFFD92D20)
+                : const Color(0xFFB85C3B),
           ),
           const SizedBox(
             width: 10,
@@ -908,9 +913,9 @@ class _LiveMonitoringCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Monitoring na żywo',
-                  style: TextStyle(
+                Text(
+                  isStale ? 'Dane nieaktualne' : 'Monitoring na żywo',
+                  style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF3A2A24),
                   ),
@@ -919,7 +924,9 @@ class _LiveMonitoringCard extends StatelessWidget {
                   height: 2,
                 ),
                 Text(
-                  'Odświeżanie co $refreshSeconds s • ostatnio $lastUpdatedLabel',
+                  isStale
+                      ? 'Nie można potwierdzić obecnego stanu • ostatnio $lastUpdatedLabel'
+                      : 'Odświeżanie co $refreshSeconds s • ostatnio $lastUpdatedLabel',
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF7B6D64),
