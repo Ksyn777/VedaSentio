@@ -190,5 +190,27 @@ class ApiClient {
     return decoded;
   }
 
+  Future<Map<String, dynamic>> deleteAuthorized(
+    String path,
+    String token, {
+    required Map<String, dynamic> body,
+  }) async {
+    final response = await _request(
+      () => _client.delete(
+        _uri(path),
+        headers: _headers(token),
+        body: jsonEncode(body),
+      ),
+    );
+
+    final decoded = _decode(response);
+    _check(response, decoded);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw const ApiException('Nieoczekiwany format odpowiedzi.');
+    }
+    return decoded;
+  }
+
   void close() => _client.close();
 }
