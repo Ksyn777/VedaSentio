@@ -561,7 +561,7 @@ class _HomeDetailsScreenState
           height: 10,
         ),
         if (data.activeAlarms.isEmpty)
-          const _SimpleInfoCard(
+          _SimpleInfoCard(
             icon: Icons.verified_user_outlined,
             title: 'Brak aktywnych alarmów',
             subtitle: _errorMessage != null
