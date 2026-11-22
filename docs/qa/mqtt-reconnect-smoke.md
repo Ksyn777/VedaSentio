@@ -50,3 +50,9 @@ Na osobnej, izolowanej bazie i lokalnym Mosquitto, z fizycznym ESP32:
 - Zapisz wynik i wersję firmware. Nie traktuj samej kompilacji firmware jako testu fizycznego.
 
 **Odbiór #27 pozostaje niepełny**, dopóki te scenariusze nie zostaną rzeczywiście wykonane.
+
+## Granice potwierdzenia braku duplikatów
+
+Testy sprawdzają, że **pojedynczo opublikowana** wiadomość jest zapisywana dokładnie raz oraz że wielokrotne sprawdzenie offline nie tworzy kolejnych aktywnych alarmów. MQTT przy QoS 1 dopuszcza ponowne dostarczenie komunikatu. Obecny kontrakt nie zawiera trwałego identyfikatora zdarzenia, więc system **nie zapewnia jeszcze deduplikacji dwóch oddzielnie dostarczonych identycznych publikacji**. Nie opisujemy tej właściwości jako „exactly once”.
+
+Test PostgreSQL wysyła także komunikaty z nieznanego i nieaktywnego urządzenia oraz błędnym timestampem; muszą zostać odrzucone bez zapisu zdarzenia czy zmiany stanu.

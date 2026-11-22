@@ -110,7 +110,20 @@ wait_marker "[PG] INITIAL_HEARTBEAT_OK" 25
 # Wrong JSON boolean type must not update last_seen or save an event.
 mosquitto_pub -h 127.0.0.1 -p "$VEDASENTIO_SMOKE_PORT" -q 1 -t "$topic" \
     -m '{"timestamp":"2026-11-22T12:00:01Z","event_type":"door_closed","value":"false"}'
+
+# Reject a forged device ID and a registered but disabled device.
+mosquitto_pub -h 127.0.0.1 -p "$VEDASENTIO_SMOKE_PORT" -q 1 \
+    -t "vedasentio/home_ci/unknown_ci/event" \
+    -m '{"timestamp":"2026-11-22T12:00:01Z","event_type":"door_opened","value":true}'
+mosquitto_pub -h 127.0.0.1 -p "$VEDASENTIO_SMOKE_PORT" -q 1 \
+    -t "vedasentio/home_ci/inactive_ci/event" \
+    -m '{"timestamp":"2026-11-22T12:00:01Z","event_type":"door_opened","value":true}'
+mosquitto_pub -h 127.0.0.1 -p "$VEDASENTIO_SMOKE_PORT" -q 1 -t "$topic" \
+    -m '{"timestamp":"2026-02-30T12:00:01Z","event_type":"door_opened","value":true}'
 wait_marker "[PG] OFFLINE_ALARM_OPENED" 20
+grep -Fq "is not registered" "$test_log"
+grep -Fq "is inactive" "$test_log"
+grep -Fq "timestamp" "$test_log"
 
 before="$(grep -Fc "[MQTT] Subscription requested:" "$test_log" || true)"
 echo "[PG] Stopping disposable broker..."

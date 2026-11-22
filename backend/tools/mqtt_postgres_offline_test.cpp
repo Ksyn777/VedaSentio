@@ -19,6 +19,7 @@
 namespace {
 constexpr const char* HOME = "home_ci";
 constexpr const char* DEVICE = "door_ci";
+constexpr const char* INACTIVE = "inactive_ci";
 
 std::string required(const char* name) {
     const char* value = std::getenv(name);
@@ -63,6 +64,9 @@ struct DisposableFixture {
         tx.exec("INSERT INTO devices(home_id,id,device_type,name) "
                 "VALUES($1,$2,'door_contact','MQTT CI door')",
                 pqxx::params{HOME, DEVICE});
+        tx.exec("INSERT INTO devices(home_id,id,device_type,name,is_active) "
+                "VALUES($1,$2,'door_contact','Inactive CI device',FALSE)",
+                pqxx::params{HOME, INACTIVE});
         tx.commit();
     }
 
@@ -95,7 +99,20 @@ bool wait_until(Condition condition, std::chrono::seconds timeout) {
 }
 
 std::vector<Device> device_list(Database& db) {
-    return db.get_devices(HOME);
+    std::vector<Device> selected;
+    for (const auto& device : db.get_devices(HOME)) {
+        if (device.id == DEVICE) selected.push_back(device);
+    }
+    return selected;
+}
+
+bool inactive_device_unmodified(Database& db) {
+    for (const auto& device : db.get_devices(HOME)) {
+        if (device.id == INACTIVE) {
+            return !device.is_active && device.last_seen_at.empty();
+        }
+    }
+    return false;
 }
 
 void force_device_offline(const std::string& conninfo) {
@@ -142,6 +159,10 @@ int main() {
         require(db.get_events(HOME).empty(), "Invalid payload was saved.");
         require(device_list(db)[0].last_seen_at == original,
                 "Invalid payload changed device last_seen.");
+        require(inactive_device_unmodified(db),
+                "Rejected event modified an inactive device.");
+        require(alarms.get_alarms(HOME, true, 10).empty(),
+                "Rejected event created an alarm.");
 
         // Simulate a device that did not report for 3 minutes.
         force_device_offline(conninfo);
@@ -153,8 +174,10 @@ int main() {
         require(new_alarm.has_value(), "Offline alarm was not opened.");
         require(new_alarm->alarm_type == "device_offline",
                 "Wrong offline alarm type.");
-        require(!alarms.open_device_offline_alarm(HOME, DEVICE).has_value(),
-                "Repeated offline check created a duplicate alarm.");
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            require(!alarms.open_device_offline_alarm(HOME, DEVICE).has_value(),
+                    "Repeated offline check created a duplicate alarm.");
+        }
         auto active = alarms.get_alarms(HOME, true, 10);
         require(active.size() == 1 && active[0].id == new_alarm->id,
                 "Expected exactly one active offline alarm.");
