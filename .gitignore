@@ -1,5 +1,8 @@
 # Secrets
 .env
+firmware/**/include/secrets.h
+firebase-service-account*.json
+**/firebase-service-account*.json
 
 # IDE
 .vscode/
