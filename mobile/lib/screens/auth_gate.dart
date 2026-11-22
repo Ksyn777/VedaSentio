@@ -177,7 +177,7 @@ class _AuthGateState
           MaterialPageRoute<void>(
             builder: (context) =>
                 HomeDetailsScreen(
-              home: selectedHome!,
+              home: selectedHome,
               authService: _auth,
               onSessionExpired: _logout,
               openedAlarmId:
