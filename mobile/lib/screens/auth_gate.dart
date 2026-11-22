@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/alarm_notification_target.dart';
 import '../models/home.dart';
 import '../models/session_data.dart';
+import '../services/api_exception.dart';
 import '../services/auth_service.dart';
 import '../services/vedasentio_push_notification_service.dart';
 import 'dashboard_screen.dart';
@@ -10,7 +11,15 @@ import 'home_details_screen.dart';
 import 'login_screen.dart';
 
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key});
+  const AuthGate({
+    this.authService,
+    this.pushNotificationService,
+    super.key,
+  });
+
+  // Optional dependencies make session recovery testable without Firebase.
+  final AuthService? authService;
+  final VedaSentioPushNotificationService? pushNotificationService;
 
   @override
   State<AuthGate> createState() =>
@@ -35,10 +44,11 @@ class _AuthGateState
   void initState() {
     super.initState();
 
-    _auth = AuthService();
+    _auth = widget.authService ?? AuthService();
 
     _pushNotificationService =
-        VedaSentioPushNotificationService();
+        widget.pushNotificationService ??
+            VedaSentioPushNotificationService();
 
     _initializeApplication();
   }
@@ -177,7 +187,7 @@ class _AuthGateState
           MaterialPageRoute<void>(
             builder: (context) =>
                 HomeDetailsScreen(
-              home: selectedHome!,
+              home: selectedHome,
               authService: _auth,
               onSessionExpired: _logout,
               openedAlarmId:
@@ -197,10 +207,15 @@ class _AuthGateState
 
   Future<void>
       _registerMobileDeviceForPushNotifications() async {
-    await _pushNotificationService
-        .registerCurrentMobileDevice(
-      _auth,
-    );
+    try {
+      await _pushNotificationService.registerCurrentMobileDevice(_auth);
+    } on ApiException catch (error) {
+      // The registration endpoint is protected. A 401 invalidates the
+      // current session even when the dashboard has already been shown.
+      if (error.isUnauthorized && mounted) {
+        await _logout();
+      }
+    }
   }
 
   Future<void> _logout() async {

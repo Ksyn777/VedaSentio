@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/alarm_notification_target.dart';
 import 'auth_service.dart';
+import 'api_exception.dart';
 import 'push_token_registration.dart';
 
 class VedaSentioPushNotificationService {
@@ -121,11 +122,18 @@ class VedaSentioPushNotificationService {
         debugPrint('[PUSH] Urządzenie mobilne zostało zarejestrowane.');
       }
       return registered;
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        rethrow;
+      }
+      debugPrint(
+        '[PUSH] Rejestracja urządzenia nie powiodła się (HTTP lub sieć).',
+      );
+      return false;
     } catch (error) {
       debugPrint(
         '[PUSH] Nie udało się zarejestrować urządzenia: $error',
       );
-
       return false;
     }
   }
