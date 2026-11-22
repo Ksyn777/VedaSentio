@@ -185,7 +185,7 @@ void MqttClient::start(
                 password
             )
             .clean_session(
-                false
+                true
             )
             .automatic_reconnect(
                 std::chrono::seconds(1),
@@ -207,17 +207,41 @@ void MqttClient::start(
     std::cout
         << "[MQTT] Connected.\n";
 
-    client_
-        .subscribe(
+}
+
+void MqttClient::connected(
+    const std::string& cause
+)
+{
+    try
+    {
+        client_.subscribe(
             topic_filter_,
             qos_
-        )
-        ->wait();
+        );
 
-    std::cout
-        << "[MQTT] Subscribed: "
-        << topic_filter_
-        << '\n';
+        std::cout
+            << "[MQTT] Subscription requested: "
+            << topic_filter_;
+
+        if (!cause.empty())
+        {
+            std::cout
+                << " ("
+                << cause
+                << ")";
+        }
+
+        std::cout
+            << '\n';
+    }
+    catch (const mqtt::exception& error)
+    {
+        std::cerr
+            << "[MQTT] Subscription request failed: "
+            << error.what()
+            << '\n';
+    }
 }
 
 void MqttClient::connection_lost(
