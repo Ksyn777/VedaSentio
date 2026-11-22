@@ -137,6 +137,52 @@ int main()
         Database database(conninfo);
         AlarmRepository alarms(conninfo);
 
+        SensorEvent heartbeat;
+        heartbeat.topic = "vedasentio/" + home_id + "/" + door_device_id + "/event";
+        heartbeat.home_id = home_id;
+        heartbeat.device_id = door_device_id;
+        heartbeat.event_type = "heartbeat";
+        heartbeat.value_json = "true";
+        heartbeat.device_timestamp = "2026-10-05T15:59:00Z";
+        heartbeat.raw_payload = "{\"event_type\":\"heartbeat\",\"value\":true,\"timestamp\":\"2026-10-05T15:59:00Z\"}";
+
+        const auto heartbeat_alarm =
+            alarms.process_event(
+                heartbeat,
+                0
+            );
+
+        if (heartbeat_alarm.has_value() ||
+            !alarms.get_alarms(home_id, true, 10).empty())
+        {
+            throw std::runtime_error("Heartbeat unexpectedly created an alarm.");
+        }
+
+        std::cout << "[ALARM-TEST] Heartbeat did not create an alarm.\n";
+
+        SensorEvent inactive_flood;
+        inactive_flood.topic = "vedasentio/" + home_id + "/" + flood_device_id + "/event";
+        inactive_flood.home_id = home_id;
+        inactive_flood.device_id = flood_device_id;
+        inactive_flood.event_type = "flood_detected";
+        inactive_flood.value_json = "false";
+        inactive_flood.device_timestamp = "2026-10-05T15:59:30Z";
+        inactive_flood.raw_payload = "{\"event_type\":\"flood_detected\",\"value\":false,\"timestamp\":\"2026-10-05T15:59:30Z\"}";
+
+        const auto inactive_flood_alarm =
+            alarms.process_event(
+                inactive_flood,
+                0
+            );
+
+        if (inactive_flood_alarm.has_value() ||
+            !alarms.get_alarms(home_id, true, 10).empty())
+        {
+            throw std::runtime_error("Inactive flood value unexpectedly created an alarm.");
+        }
+
+        std::cout << "[ALARM-TEST] Inactive alarm value was ignored.\n";
+
         SensorEvent pressed;
         pressed.topic = "vedasentio/" + home_id + "/" + sos_device_id + "/event";
         pressed.home_id = home_id;
@@ -528,6 +574,81 @@ int main()
         std::cout << "[DOOR-TEST] door_closed stored without alarm.\n";
         std::cout << "[DOOR-TEST] Door event history preserved OK.\n";
         std::cout << "[DOOR-TEST] Latest door state is door_closed.\n";
+        const auto offline_alarm =
+            alarms.open_device_offline_alarm(
+                home_id,
+                door_device_id
+            );
+
+        if (!offline_alarm.has_value() ||
+            offline_alarm->alarm_type != "device_offline" ||
+            offline_alarm->severity != "warning" ||
+            offline_alarm->status != "active")
+        {
+            throw std::runtime_error("Device offline alarm was not opened correctly.");
+        }
+
+        const auto duplicate_offline_alarm =
+            alarms.open_device_offline_alarm(
+                home_id,
+                door_device_id
+            );
+
+        if (duplicate_offline_alarm.has_value())
+        {
+            throw std::runtime_error("Repeated offline check created a duplicate alarm.");
+        }
+
+        const auto active_after_offline =
+            alarms.get_alarms(
+                home_id,
+                true,
+                20
+            );
+
+        int active_offline_count = 0;
+
+        for (const Alarm& alarm : active_after_offline)
+        {
+            if (alarm.alarm_type == "device_offline")
+                ++active_offline_count;
+        }
+
+        if (active_offline_count != 1)
+        {
+            throw std::runtime_error("Expected exactly one active device_offline alarm.");
+        }
+
+        if (!alarms.resolve_device_offline_alarm(home_id, door_device_id))
+        {
+            throw std::runtime_error("Device offline alarm was not resolved.");
+        }
+
+        const auto history_after_offline =
+            alarms.get_alarms(
+                home_id,
+                false,
+                50
+            );
+
+        bool resolved_offline_found = false;
+
+        for (const Alarm& alarm : history_after_offline)
+        {
+            if (alarm.alarm_type == "device_offline" &&
+                alarm.status == "resolved" &&
+                alarm.resolution_source == "sensor")
+            {
+                resolved_offline_found = true;
+            }
+        }
+
+        if (!resolved_offline_found)
+        {
+            throw std::runtime_error("Resolved device_offline alarm was not preserved in history.");
+        }
+
+        std::cout << "[ALARM-TEST] Device offline alarm cycle OK.\n";
         std::cout << "[ALARM-TEST] ALL ALARM FLOW TESTS OK.\n";
 
         cleanup(conninfo, home_id);
