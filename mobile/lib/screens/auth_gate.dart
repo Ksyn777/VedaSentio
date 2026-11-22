@@ -129,15 +129,9 @@ class _AuthGateState
       return;
     }
 
-    Home? selectedHome;
-
-    for (Home home in currentSession.homes) {
-      if (home.id ==
-          notificationTarget.homeId) {
-        selectedHome = home;
-        break;
-      }
-    }
+    final selectedHome = notificationTarget.findAccessibleHome(
+      currentSession.homes,
+    );
 
     if (selectedHome == null) {
       _pendingAlarmNotificationTarget =
@@ -211,6 +205,8 @@ class _AuthGateState
   }
 
   Future<void> _logout() async {
+    // Stop token rotations before removing the authenticated session.
+    _pushNotificationService.stopMobileTokenRegistration();
     await _auth.logout();
 
     if (!mounted) {
