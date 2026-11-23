@@ -2,6 +2,7 @@
 
 #include <mqtt/async_client.h>
 
+#include <atomic>
 #include <string>
 
 class AlarmRepository;
@@ -26,6 +27,8 @@ public:
         const std::string& password
     );
 
+    void connected(const std::string& cause) override;
+
     void connection_lost(
         const std::string& cause
     ) override;
@@ -42,4 +45,7 @@ private:
     AlarmRepository& alarms_;
     PushNotificationService* push_notifications_;
     mqtt::async_client client_;
+    // Paho also calls connected() for the initial connection. start() owns
+    // that subscription and waits for SUBACK outside the callback thread.
+    std::atomic<bool> first_connection_{true};
 };
