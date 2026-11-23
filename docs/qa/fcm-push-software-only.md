@@ -6,7 +6,7 @@ Ten PR bazuje na gałęzi PR #50 (`test/22-push-token-rotation-validation`) i do
 
 - `backend/src/push/FcmResponseParser.h`: parser odpowiedzi JSON. Wynik kwalifikuje token do wyłączenia tylko wtedy, gdy `error.details[]` zawiera tekstowy `errorCode: UNREGISTERED`. Nieprawidłowa struktura i nieudany odczyt JSON nie mogą skutkować dezaktywacją.
 - `backend/src/push/PushNotificationService.cpp`: używa wydzielonego parsera zamiast lokalnej, nieprzetestowanej funkcji. Zachowano istniejącą ścieżkę dezaktywacji tokenów i obsługę pozostałych błędów.
-- `backend/tools/fcm_response_parser_test.cpp`: 11 przypadków testowych, m.in. UNREGISTERED, INVALID_ARGUMENT, UNAVAILABLE, puste lub niepoprawne JSON.
+- `backend/tools/fcm_response_parser_test.cpp`: 15 przypadków testowych, m.in. UNREGISTERED, INVALID_ARGUMENT, UNAVAILABLE, puste lub niepoprawne JSON, mylący `errorCode` poza `details[]`, tekst błędu zawierający `UNREGISTERED`, zagnieżdżony kod i odmienna wielkość liter. Te odpowiedzi nie mogą niepotrzebnie wyłączyć tokena.
 - `backend/CMakeLists.txt`: rejestruje test w istniejącym CTest; zachowuje wszystkie obecne cele i testy backendu/MQTT.
 
 ## Odbiór i ograniczenia
