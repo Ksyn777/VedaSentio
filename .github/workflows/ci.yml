@@ -157,3 +157,58 @@ jobs:
 
       - name: Build firmware
         run: pio run -d firmware/door_contact_esp32
+
+
+  alarm-regression:
+    name: Alarm regression
+    # Use a stable runner and pinned patched libpqxx 7.10.7.
+    # Distro libpqxx 7.8 on 24.04 lacks the parameterized exec API;
+    # distro libpqxx 7.10 on 26.04 can double-free at process shutdown.
+    # https://github.com/jtv/libpqxx/issues/1195
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: vedasentio_test
+          POSTGRES_USER: vedasentio_test
+          POSTGRES_PASSWORD: test_only_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vedasentio_test -d vedasentio_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      VEDASENTIO_DB_HOST: 127.0.0.1
+      VEDASENTIO_DB_PORT: "5432"
+      VEDASENTIO_DB_NAME: vedasentio_test
+      VEDASENTIO_DB_USER: vedasentio_test
+      VEDASENTIO_DB_PASSWORD: test_only_password
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev nlohmann-json3-dev postgresql-client
+
+      - name: Install patched libpqxx 7.10.7
+        run: |
+          git clone --depth 1 --branch 7.10.7 https://github.com/jtv/libpqxx.git "${RUNNER_TEMP}/libpqxx"
+          cmake -S "${RUNNER_TEMP}/libpqxx" -B "${RUNNER_TEMP}/libpqxx/build" \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DSKIP_BUILD_TEST=ON
+          cmake --build "${RUNNER_TEMP}/libpqxx/build" --parallel 2
+          sudo cmake --install "${RUNNER_TEMP}/libpqxx/build"
+          sudo ldconfig
+
+      - name: Run alarm regression test
+        run: bash scripts/test_alarm_flow_linux.sh

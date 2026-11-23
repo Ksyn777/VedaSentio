@@ -1,131 +1,14 @@
 #include "MqttClient.h"
+#include "SensorEventParser.h"
 
 #include "../alarms/AlarmRepository.h"
 #include "../database/Database.h"
-#include "../model/SensorEvent.h"
 #include "../push/PushNotificationService.h"
 
-#include <nlohmann/json.hpp>
-
+#include <chrono>
+#include <exception>
 #include <iostream>
-#include <sstream>
-#include <stdexcept>
 #include <utility>
-#include <vector>
-
-namespace
-{
-std::vector<std::string> split_topic(
-    const std::string& topic
-)
-{
-    std::vector<std::string> parts;
-    std::stringstream stream(
-        topic
-    );
-
-    std::string part;
-
-    while (
-        std::getline(
-            stream,
-            part,
-            '/'
-        )
-    )
-    {
-        parts.push_back(
-            part
-        );
-    }
-
-    return parts;
-}
-
-SensorEvent parse_sensor_event(
-    const std::string& topic,
-    const std::string& payload
-)
-{
-    const auto topic_parts =
-        split_topic(
-            topic
-        );
-
-    if (
-        topic_parts.size() != 4 ||
-        topic_parts[0] != "vedasentio" ||
-        topic_parts[3] != "event" ||
-        topic_parts[1].empty() ||
-        topic_parts[2].empty()
-    )
-    {
-        throw std::runtime_error(
-            "Invalid MQTT topic. Expected: "
-            "vedasentio/{home_id}/{device_id}/event"
-        );
-    }
-
-    const auto json =
-        nlohmann::json::parse(
-            payload
-        );
-
-    if (
-        !json.contains("event_type") ||
-        !json["event_type"].is_string()
-    )
-    {
-        throw std::runtime_error(
-            "Payload field 'event_type' is required "
-            "and must be a string."
-        );
-    }
-
-    if (!json.contains("value"))
-    {
-        throw std::runtime_error(
-            "Payload field 'value' is required."
-        );
-    }
-
-    if (
-        !json.contains("timestamp") ||
-        !json["timestamp"].is_string()
-    )
-    {
-        throw std::runtime_error(
-            "Payload field 'timestamp' is required "
-            "and must be a string."
-        );
-    }
-
-    SensorEvent event;
-
-    event.topic =
-        topic;
-
-    event.home_id =
-        topic_parts[1];
-
-    event.device_id =
-        topic_parts[2];
-
-    event.event_type =
-        json["event_type"].get<std::string>();
-
-    event.value_json =
-        json["value"].dump();
-
-    event.device_timestamp =
-        json["timestamp"].get<std::string>();
-
-    event.raw_payload =
-        payload;
-
-    return event;
-}
-}
 
 MqttClient::MqttClient(
     std::string server_address,
@@ -186,6 +69,10 @@ void MqttClient::start(
             .clean_session(
                 true
             )
+            .automatic_reconnect(
+                std::chrono::seconds(1),
+                std::chrono::seconds(30)
+            )
             .finalize();
 
     std::cout
@@ -215,6 +102,25 @@ void MqttClient::start(
         << '\n';
 }
 
+void MqttClient::connected(const std::string&)
+{
+    if (first_connection_.exchange(false))
+    {
+        return;
+    }
+
+    try
+    {
+        // Never wait inside a Paho callback: SUBACK is processed there too.
+        client_.subscribe(topic_filter_, qos_);
+        std::cout << "[MQTT] Subscription requested: " << topic_filter_ << '\n';
+    }
+    catch (const mqtt::exception& error)
+    {
+        std::cerr << "[MQTT] Subscription request failed: " << error.what() << '\n';
+    }
+}
+
 void MqttClient::connection_lost(
     const std::string& cause
 )
@@ -230,7 +136,7 @@ void MqttClient::connection_lost(
     }
 
     std::cerr
-        << '\n';
+        << "\n[MQTT] Automatic reconnect is enabled.\n";
 }
 
 void MqttClient::message_arrived(
@@ -330,13 +236,6 @@ void MqttClient::message_arrived(
                     << '\n';
             }
         }
-    }
-    catch (const nlohmann::json::exception& error)
-    {
-        std::cerr
-            << "[JSON] Invalid payload: "
-            << error.what()
-            << '\n';
     }
     catch (const std::exception& error)
     {

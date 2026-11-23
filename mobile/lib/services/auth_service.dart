@@ -10,9 +10,14 @@ import 'api_exception.dart';
 import 'token_storage.dart';
 
 class AuthService {
-  final ApiClient _api = ApiClient();
-  final TokenStorage _tokens =
-      TokenStorage();
+  AuthService({
+    ApiClient? apiClient,
+    TokenStorage? tokenStorage,
+  })  : _api = apiClient ?? ApiClient(),
+        _tokens = tokenStorage ?? TokenStorage();
+
+  final ApiClient _api;
+  final TokenStorage _tokens;
 
   Future<SessionData> login(
     String email,
@@ -271,14 +276,21 @@ class AuthService {
   ) async {
     final accessToken = await _requireToken();
 
-    await _api.postAuthorized(
-      '/api/mobile-devices/push-token',
-      accessToken,
-      body: {
-        'fcm_token': firebaseCloudMessagingToken,
-        'platform': mobilePlatformName,
-      },
-    );
+    try {
+      await _api.postAuthorized(
+        '/api/mobile-devices/push-token',
+        accessToken,
+        body: {
+          'fcm_token': firebaseCloudMessagingToken,
+          'platform': mobilePlatformName,
+        },
+      );
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _tokens.clear();
+      }
+      rethrow;
+    }
   }
 
   Future<void> logout() =>
