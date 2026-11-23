@@ -10,7 +10,10 @@ param(
     [string]$DeviceId = "sos_001",
 
     [ValidateRange(0, 2)]
-    [int]$Qos = 1
+    [int]$Qos = 1,
+
+    # Optional timestamp for deterministic local smoke tests.
+    [string]$TimestampUtc = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,6 +81,21 @@ $timestamp =
     (Get-Date).ToUniversalTime().ToString(
         "yyyy-MM-ddTHH:mm:ss.fffZ"
     )
+
+if (-not [string]::IsNullOrWhiteSpace($TimestampUtc)) {
+    try {
+        [DateTimeOffset]::ParseExact(
+            $TimestampUtc,
+            "yyyy-MM-ddTHH:mm:ss.fff'Z'",
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AssumeUniversal
+        ) | Out-Null
+    }
+    catch {
+        throw "TimestampUtc musi byc poprawna data UTC (yyyy-MM-ddTHH:mm:ss.fffZ)."
+    }
+    $timestamp = $TimestampUtc
+}
 
 $topic =
     "vedasentio/$HomeId/$DeviceId/event"

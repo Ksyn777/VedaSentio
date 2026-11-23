@@ -1,7 +1,9 @@
 ﻿param(
     [Parameter(Mandatory = $true)]
     [ValidateSet("opened", "closed")]
-    [string]$State
+    [string]$State,
+
+    [string]$TimestampUtc = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,4 +23,5 @@ else {
     -EventType $eventType `
     -ValueJson $valueJson `
     -HomeId "home_001" `
-    -DeviceId "door_001"
+    -DeviceId "door_001" `
+    -TimestampUtc $TimestampUtc
