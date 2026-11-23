@@ -5,6 +5,7 @@
 #include "../database/Database.h"
 #include "../push/PushNotificationService.h"
 
+#include <chrono>
 #include <exception>
 #include <iostream>
 #include <utility>
@@ -68,6 +69,10 @@ void MqttClient::start(
             .clean_session(
                 true
             )
+            .automatic_reconnect(
+                std::chrono::seconds(1),
+                std::chrono::seconds(30)
+            )
             .finalize();
 
     std::cout
@@ -97,6 +102,25 @@ void MqttClient::start(
         << '\n';
 }
 
+void MqttClient::connected(const std::string&)
+{
+    if (first_connection_.exchange(false))
+    {
+        return;
+    }
+
+    try
+    {
+        // Never wait inside a Paho callback: SUBACK is processed there too.
+        client_.subscribe(topic_filter_, qos_);
+        std::cout << "[MQTT] Subscription requested: " << topic_filter_ << '\n';
+    }
+    catch (const mqtt::exception& error)
+    {
+        std::cerr << "[MQTT] Subscription request failed: " << error.what() << '\n';
+    }
+}
+
 void MqttClient::connection_lost(
     const std::string& cause
 )
@@ -112,7 +136,7 @@ void MqttClient::connection_lost(
     }
 
     std::cerr
-        << '\n';
+        << "\n[MQTT] Automatic reconnect is enabled.\n";
 }
 
 void MqttClient::message_arrived(
