@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -130,6 +131,28 @@ void main() {
       auth.unregisterMobilePushNotificationToken('ci-token'),
       throwsA(isA<ApiException>().having(
         (e) => e.statusCode, 'no HTTP status', isNull,
+      )),
+    );
+    expect(storage.value, 'ci-jwt');
+    expect(storage.cleared, 0);
+  });
+
+  test('timeout DELETE preserves JWT and cannot confirm revocation', () async {
+    final storage = _MemoryTokens();
+    final pendingResponse = Completer<http.Response>();
+    final auth = AuthService(
+      tokenStorage: storage,
+      apiClient: ApiClient(
+        timeout: const Duration(milliseconds: 20),
+        client: MockClient((_) => pendingResponse.future),
+      ),
+    );
+    addTearDown(auth.dispose);
+
+    await expectLater(
+      auth.unregisterMobilePushNotificationToken('ci-token'),
+      throwsA(isA<ApiException>().having(
+        (error) => error.statusCode, 'no HTTP response', isNull,
       )),
     );
     expect(storage.value, 'ci-jwt');
