@@ -52,6 +52,13 @@ public:
         const std::string& mobile_platform
     ) const;
 
+    // Idempotent and scoped to the authenticated owner of this token.
+    // A token belonging to a different user is never modified.
+    void deactivate_mobile_push_notification_token(
+        long long user_id,
+        const std::string& firebase_cloud_messaging_token
+    ) const;
+
 private:
     std::string connection_string_;
 };

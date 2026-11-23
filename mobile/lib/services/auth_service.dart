@@ -293,6 +293,30 @@ class AuthService {
     }
   }
 
+  Future<void> unregisterMobilePushNotificationToken(
+    String firebaseCloudMessagingToken,
+  ) async {
+    final accessToken = await _requireToken();
+
+    try {
+      final response = await _api.deleteAuthorized(
+        '/api/mobile-devices/push-token',
+        accessToken,
+        body: {'fcm_token': firebaseCloudMessagingToken},
+      );
+      if (response['status'] != 'unregistered') {
+        throw const ApiException(
+          'Serwer nie potwierdził wyrejestrowania urządzenia.',
+        );
+      }
+    } on ApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _tokens.clear();
+      }
+      rethrow;
+    }
+  }
+
   Future<void> logout() =>
       _tokens.clear();
 
