@@ -29,6 +29,9 @@ ESP32 / testowy publikator
 
 ## Szybki start na Windows — tylko środowisko lokalne
 
+Jeśli konfiguracja backendu zgłasza błąd vcpkg lub chcesz przygotować bezpieczny
+odbiór SOS na osobnych usługach, skorzystaj z [diagnostyki Windows 11](docs/qa/windows-backend-environment-preflight.md).
+
 Wymagane: **Git, PowerShell, Docker Desktop**, Visual Studio z narzędziami C++ i CMake, vcpkg oraz Flutter SDK (dla aplikacji mobilnej); do testów Androida także emulator lub telefon z `adb`. Nie jest potrzebny fizyczny ESP32. Komendy uruchamiaj z **katalogu głównego repozytorium**, w osobnej kopii developerskiej — nie na komputerze produkcyjnym.
 
 ### 1. Pobierz repozytorium i ustaw lokalną konfigurację
