@@ -27,6 +27,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   bool _loading = true;
   String? _errorMessage;
   List<SensorEvent> _events = const [];
+  int _loadGeneration = 0;
   DateTime? _selectedDate;
 
   @override
@@ -36,6 +37,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   }
 
   Future<void> _loadActivity() async {
+    final generation = ++_loadGeneration;
     if (widget.session.homes.isEmpty) {
       setState(() {
         _loading = false;
@@ -58,7 +60,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         limit: 50,
       );
 
-      if (!mounted) {
+      if (!mounted || generation != _loadGeneration) {
         return;
       }
 
@@ -69,12 +71,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (!mounted || generation != _loadGeneration) {
+        return;
+      }
       if (error.isUnauthorized) {
         await widget.onSessionExpired();
         return;
       }
 
-      if (!mounted) {
+      if (!mounted || generation != _loadGeneration) {
         return;
       }
 
@@ -83,7 +88,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || generation != _loadGeneration) {
         return;
       }
 
@@ -102,6 +107,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
     setState(() {
       _selectedHomeIndex = index;
       _selectedDate = null;
+      _events = const [];
+      _loading = true;
+      _errorMessage = null;
     });
 
     _loadActivity();
@@ -328,15 +336,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
     DateTime local = parsed.toLocal();
     DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
-    DateTime eventDay = DateTime(local.year, local.month, local.day);
-    int difference = today.difference(eventDay).inDays;
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
 
-    if (difference == 0) {
+    if (_isSameDate(local, now)) {
       return 'Dzisiaj';
     }
 
-    if (difference == 1) {
+    if (_isSameDate(local, yesterday)) {
       return 'Wczoraj';
     }
 
