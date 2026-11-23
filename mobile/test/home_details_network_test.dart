@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vedasentio_mobile/models/alarm.dart';
+import 'package:vedasentio_mobile/models/device.dart';
 import 'package:vedasentio_mobile/models/home.dart';
 import 'package:vedasentio_mobile/models/home_details_data.dart';
 import 'package:vedasentio_mobile/screens/home_details_screen.dart';
@@ -53,6 +54,25 @@ const emptyData = HomeDetailsData(
   alarmHistory: [],
 );
 
+const onlineDevice = Device(
+  homeId: 'home_ci',
+  id: 'door_ci',
+  deviceType: 'door_contact',
+  name: 'Czujnik drzwi',
+  isActive: true,
+  lastSeenAt: '2026-11-22T10:00:00Z',
+  isOnline: true,
+  createdAt: '2026-11-20T10:00:00Z',
+);
+
+const connectedData = HomeDetailsData(
+  devices: [onlineDevice],
+  recentEvents: [],
+  latestEventsByDevice: {},
+  activeAlarms: [],
+  alarmHistory: [],
+);
+
 const activeAlarm = Alarm(
   id: 7,
   homeId: 'home_ci',
@@ -95,7 +115,7 @@ void main() {
       (tester) async {
     final auth = QueuedAuthService([
       () async => throw const ApiException('Brak połączenia z serwerem.'),
-      () async => emptyData,
+      () async => connectedData,
     ]);
 
     await pumpHome(tester, auth);
@@ -113,9 +133,9 @@ void main() {
   testWidgets('failed refresh keeps prior data but marks it stale',
       (tester) async {
     final auth = QueuedAuthService([
-      () async => emptyData,
+      () async => connectedData,
       () async => throw const ApiException('Połączenie przerwane.'),
-      () async => emptyData,
+      () async => connectedData,
     ]);
 
     await pumpHome(tester, auth);
@@ -159,7 +179,7 @@ void main() {
       (tester) async {
     var logoutCount = 0;
     final auth = QueuedAuthService([
-      () async => activeData,
+      () async => connectedData,
       () async => throw const ApiException(
             'Access denied.',
             statusCode: 403,
