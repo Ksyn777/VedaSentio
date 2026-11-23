@@ -89,7 +89,6 @@ void MqttClient::start(
     std::cout
         << "[MQTT] Connected.\n";
 
-    // Initial subscribe must be acknowledged before processing events.
     client_
         .subscribe(
             topic_filter_,
@@ -103,38 +102,22 @@ void MqttClient::start(
         << '\n';
 }
 
-void MqttClient::connected(
-    const std::string& cause
-)
+void MqttClient::connected(const std::string&)
 {
+    if (first_connection_.exchange(false))
+    {
+        return;
+    }
+
     try
     {
-        client_.subscribe(
-            topic_filter_,
-            qos_
-        );
-
-        std::cout
-            << "[MQTT] Subscription requested: "
-            << topic_filter_;
-
-        if (!cause.empty())
-        {
-            std::cout
-                << " ("
-                << cause
-                << ")";
-        }
-
-        std::cout
-            << '\n';
+        // Never wait inside a Paho callback: SUBACK is processed there too.
+        client_.subscribe(topic_filter_, qos_);
+        std::cout << "[MQTT] Subscription requested: " << topic_filter_ << '\n';
     }
     catch (const mqtt::exception& error)
     {
-        std::cerr
-            << "[MQTT] Subscription request failed: "
-            << error.what()
-            << '\n';
+        std::cerr << "[MQTT] Subscription request failed: " << error.what() << '\n';
     }
 }
 

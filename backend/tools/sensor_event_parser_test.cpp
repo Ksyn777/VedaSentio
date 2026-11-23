@@ -175,6 +175,59 @@ int main()
             "not-json"
         );
 
+        // Boundary checks for both identifiers, JSON shape and transport limits.
+        const std::string valid_payload = make_payload("heartbeat", true);
+        for (const std::string& invalid_topic : {
+                 std::string("/vedasentio/home/device/event"),
+                 std::string("vedasentio//device/event"),
+                 std::string("vedasentio/home//event"),
+                 std::string("vedasentio/home/device/other"),
+                 std::string("vedasentio/home/device/event/extra"),
+                 std::string("vedasentio/home/dev+ice/event"),
+                 std::string("vedasentio/home/dev#ice/event"),
+                 "vedasentio/" + std::string(65, 'h') + "/device/event",
+                 "vedasentio/home/" + std::string(65, 'd') + "/event"})
+        {
+            expect_rejected(invalid_topic, valid_payload);
+        }
+
+        const auto boundary_ids = parse_sensor_event(
+            "vedasentio/" + std::string(64, 'h') + "/" +
+                std::string(64, 'd') + "/event", valid_payload);
+        require(boundary_ids.home_id.size() == 64 &&
+                    boundary_ids.device_id.size() == 64,
+                "64-character identifiers should be accepted.");
+        (void)parse_sensor_event("vedasentio/home-001/device_001/event", valid_payload);
+
+        const std::string topic = "vedasentio/home/device/event";
+        for (const std::string& invalid_payload : {
+                 std::string("[]"), std::string("null"), std::string("true"),
+                 std::string("{}"),
+                 std::string(R"({"timestamp":"2026-11-22T08:30:00Z","event_type":"heartbeat"})"),
+                 std::string(R"({"timestamp":"2026-11-22T08:30:00Z","event_type":1,"value":true})"),
+                 std::string(R"({"timestamp":1,"event_type":"heartbeat","value":true})"),
+                 std::string(R"({"timestamp":"2026-11-22T08:30:00Z","event_type":"heartbeat","value":1})")})
+        {
+            expect_rejected(topic, invalid_payload);
+        }
+        for (const auto& [event_type, value] : supported_events)
+        {
+            expect_rejected(topic, make_payload(event_type, !value));
+        }
+        for (const char* invalid_time : {
+                 "2026-02-29T08:30:00Z", "2026-13-01T08:30:00Z",
+                 "2026-11-22T24:00:00Z", "2026-11-22T08:60:00Z",
+                 "2026-11-22T08:30:60Z", "2026-11-22T08:30:00.Z",
+                 "2026-11-22T08:30:00+01:00"})
+        {
+            expect_rejected(topic, std::string("{\"timestamp\":\"") + invalid_time +
+                "\",\"event_type\":\"heartbeat\",\"value\":true}");
+        }
+        std::string limit_payload = valid_payload;
+        limit_payload.append(4096 - limit_payload.size(), ' ');
+        (void)parse_sensor_event(topic, limit_payload);
+        expect_rejected(topic, limit_payload + " ");
+
         std::cout
             << "[TEST] Sensor event parser: OK\n";
 

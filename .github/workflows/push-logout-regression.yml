@@ -1,0 +1,73 @@
+name: Push logout authorization regression
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/push-logout-regression.yml"
+      - "backend/src/api/**"
+      - "backend/src/database/**"
+      - "backend/src/auth/**"
+      - "backend/src/users/**"
+      - "backend/tools/push_token_logout_api_test.cpp"
+      - "scripts/test_push_token_logout_api.py"
+      - "scripts/test_push_token_logout_linux.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  push-token-revoke:
+    name: FCM token revocation (real HTTP and PostgreSQL)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    env:
+      VEDASENTIO_DB_HOST: "127.0.0.1"
+      VEDASENTIO_DB_PORT: "5432"
+      VEDASENTIO_DB_NAME: "vedasentio_push_revoke_ci"
+      VEDASENTIO_DB_USER: "ci_push_revoke"
+      VEDASENTIO_DB_PASSWORD: "ci_disposable_push_only"
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: vedasentio_push_revoke_ci
+          POSTGRES_USER: ci_push_revoke
+          POSTGRES_PASSWORD: ci_disposable_push_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_push_revoke -d vedasentio_push_revoke_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install local test libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++ cmake libpq-dev postgresql-client \
+            libsodium-dev libcpp-httplib-dev \
+            nlohmann-json3-dev libssl-dev curl
+
+      - name: Install patched and pinned libpqxx 7.10.7
+        run: |
+          git clone --depth 1 --branch 7.10.7 \
+            https://github.com/jtv/libpqxx.git "$RUNNER_TEMP/libpqxx"
+          test "$(git -C "$RUNNER_TEMP/libpqxx" rev-parse HEAD)" = \
+            "853bc0a48f0327d8670c1c0855f7abf731046319"
+          cmake -S "$RUNNER_TEMP/libpqxx" -B "$RUNNER_TEMP/libpqxx/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DSKIP_BUILD_TEST=ON
+          cmake --build "$RUNNER_TEMP/libpqxx/build" --parallel 2
+          sudo cmake --install "$RUNNER_TEMP/libpqxx/build"
+          sudo ldconfig
+
+      - name: Run idempotent token revocation and account isolation
+        run: bash scripts/test_push_token_logout_linux.sh

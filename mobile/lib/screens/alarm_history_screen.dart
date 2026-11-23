@@ -29,6 +29,7 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
   bool _loading = true;
   String? _errorMessage;
   List<Alarm> _alarms = const [];
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
   }
 
   Future<void> _loadHistory() async {
+    final generation = ++_loadGeneration;
     if (widget.session.homes.isEmpty) {
       setState(() {
         _loading = false;
@@ -59,7 +61,7 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
         limit: 50,
       );
 
-      if (!mounted) {
+      if (!mounted || generation != _loadGeneration) {
         return;
       }
 
@@ -68,12 +70,15 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (!mounted || generation != _loadGeneration) {
+        return;
+      }
       if (error.isUnauthorized) {
         await widget.onSessionExpired();
         return;
       }
 
-      if (!mounted) {
+      if (!mounted || generation != _loadGeneration) {
         return;
       }
 
@@ -82,7 +87,7 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || generation != _loadGeneration) {
         return;
       }
 
@@ -100,6 +105,9 @@ class _AlarmHistoryScreenState extends State<AlarmHistoryScreen> {
 
     setState(() {
       _selectedHomeIndex = index;
+      _alarms = const [];
+      _loading = true;
+      _errorMessage = null;
     });
 
     _loadHistory();
