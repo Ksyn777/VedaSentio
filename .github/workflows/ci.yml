@@ -31,6 +31,7 @@ jobs:
         run: |
           $scripts = @(
             '.\scripts\smoke_door_mqtt_api.ps1',
+            '.\scripts\smoke_sos_mqtt_api.ps1',
             '.\scripts\mqtt_test_door_contact.ps1',
             '.\scripts\mqtt_test_event.ps1'
           )
