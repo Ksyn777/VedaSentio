@@ -23,7 +23,7 @@ Kierunek: czytelny, spokojny panel kontrolny, neutralna biel, typografia z hiera
 - `mobile/test/home_monitoring_trust_test.dart`: sześć testów prezentacji stanu i utraty danych.
 - `mobile/test/home_monitoring_api_contract_test.dart`: prawdziwy `AuthService` i `ApiClient` z lokalnymi odpowiedziami HTTP `MockClient`. Sprawdza JSON urządzeń, zmianę stanu drzwi po dwóch odświeżeniach i aktywny alarm SOS, który zmienia stan bezpieczeństwa.
 - `flutter analyze` i `flutter test` w CI.
-- Zależność: PR #46 (#19), który zawiera #45 (#21). Bez scalania zmian nie może być uznany za wdrożony.
+- PR #45 (#21) i PR #46 (#19) zostały już scalone do `master`. Ten PR zawiera wyłącznie zmiany monitoringu z #18, zachowując poprawkę blokującą wyświetlanie danych po HTTP 403. Do odbioru nadal wymagany jest test aplikacji z żywym backendem.
 
 **Granice testów**: odpowiedzi HTTP są symulowane, chociaż korzystamy z właściwych tras i modeli. To test kontraktu klienta, **nie uruchomienie żywego backendu w połączeniu z Flutterem**, nie test fizycznego ESP32, nie test rzeczywistego door_001. Odbiór software-only z serwerem i testową bazą planujemy przed sprzętem.
 
