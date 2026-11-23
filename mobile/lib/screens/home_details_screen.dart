@@ -130,6 +130,11 @@ class _HomeDetailsScreenState
       }
 
       setState(() {
+        if (error.isForbidden) {
+          // Revoked access must not leave cached home details on screen.
+          _data = null;
+          _lastUpdatedAt = null;
+        }
         _errorMessage =
             error.isForbidden
                 ? 'Nie masz dostępu do tego gospodarstwa.'
