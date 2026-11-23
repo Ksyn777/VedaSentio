@@ -1,6 +1,6 @@
 # VedaSentio — architektura, przepływ danych i MQTT
 
-Dokument opisuje stan `master` na 23.11.2026. Walidator MQTT, odporność reconnect, poprawki monitoringu Fluttera, rotacja tokenów FCM i parser `UNREGISTERED` są już obecne w kodzie. Wyrejestrowanie tokena podczas wylogowania pozostaje w oddzielnym PR #52 i **nie jest jeszcze dostępne w `master`**.
+Dokument opisuje stan `master` na 23.11.2026. Walidator MQTT, odporność reconnect, poprawki monitoringu Fluttera, rotacja tokenów FCM i parser `UNREGISTERED` są już obecne w kodzie. Autoryzowane wyrejestrowanie tokena FCM po wylogowaniu (PR #52) jest już w `master`; przy awarii sieci aplikacja ostrzega, że powiadomienia mogą nadal docierać do urządzenia. Odbiór z prawdziwym Firebase i telefonem pozostaje otwarty.
 
 ## 1. Przepływ end-to-end
 
@@ -98,8 +98,9 @@ API jest lokalne, korzysta z JWT (HS256, kryptografia klucza po stronie serwera)
 | GET | `/api/homes/{home_id}/alarms` | alarmy i historia |
 | POST | `/api/homes/{home_id}/alarms/{alarm_id}/acknowledge` | potwierdzenie alarmu przez uprawnioną rolę |
 | POST | `/api/mobile-devices/push-token` | rejestracja tokena urządzenia dla powiadomień |
+| DELETE | `/api/mobile-devices/push-token` | dezaktywacja własnego tokena FCM na podstawie JWT i `fcm_token` w JSON |
 
-Role: `owner`, `caregiver`, `viewer`. `viewer` ma dostęp do odczytu w ramach przypisanego gospodarstwa, ale nie może potwierdzać alarmu. JWT nie daje automatycznie dostępu do każdego domu. Specyfikacja: [API i autoryzacja](api_authentication.md). Dodatkowe endpointy z otwartych PR-ów (np. wyrejestrowanie tokena po logout) są **jeszcze niedostępne w master**.
+Role: `owner`, `caregiver`, `viewer`. `viewer` ma dostęp do odczytu w ramach przypisanego gospodarstwa, ale nie może potwierdzać alarmu. JWT nie daje automatycznie dostępu do każdego domu. Specyfikacja: [API i autoryzacja](api_authentication.md). Przy poprawnym wyrejestrowaniu API zwraca `{"status":"unregistered"}`; jeżeli serwer jest niedostępny, nie wolno zakładać, że wpis FCM został dezaktywowany. Sprawdzenie na prawdziwym urządzeniu pozostaje konieczne.
 
 ## 6. Środowisko, porty, ograniczenia
 
