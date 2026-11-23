@@ -155,6 +155,35 @@ void main() {
     expect(logoutCount, 0);
   });
 
+  testWidgets('403 after refresh hides previously loaded home data',
+      (tester) async {
+    var logoutCount = 0;
+    final auth = QueuedAuthService([
+      () async => activeData,
+      () async => throw const ApiException(
+            'Access denied.',
+            statusCode: 403,
+          ),
+    ]);
+
+    await pumpHome(
+      tester,
+      auth,
+      onSessionExpired: () async { logoutCount++; },
+    );
+    expect(find.text('Monitoring na żywo'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Odśwież teraz'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nie masz dostępu do tego gospodarstwa.'), findsOneWidget);
+    expect(find.text('Monitoring na żywo'), findsNothing);
+    expect(find.text('Dane nieaktualne'), findsNothing);
+    expect(find.text('Spróbuj ponownie'), findsOneWidget);
+    expect(auth.loadCount, 2);
+    expect(logoutCount, 0);
+  });
+
   testWidgets('401 triggers session-expired callback',
       (tester) async {
     var logoutCount = 0;
