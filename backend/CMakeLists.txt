@@ -212,3 +212,20 @@ target_include_directories(vedasentio_mqtt_reconnect_test BEFORE PRIVATE
 )
 target_link_libraries(vedasentio_mqtt_reconnect_test PRIVATE vedasentio_event_parser)
 add_test(NAME vedasentio_mqtt_reconnect_test COMMAND vedasentio_mqtt_reconnect_test)
+
+# Validate production FCM error parsing without Firebase credentials or network.
+add_executable(
+    vedasentio_fcm_response_test
+    tools/fcm_response_parser_test.cpp
+)
+
+target_link_libraries(
+    vedasentio_fcm_response_test
+    PRIVATE
+    nlohmann_json::nlohmann_json
+)
+
+add_test(
+    NAME fcm_response_parser
+    COMMAND vedasentio_fcm_response_test
+)
