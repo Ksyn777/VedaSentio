@@ -45,6 +45,7 @@ class _HomeDetailsScreenState
 
   bool _loading = true;
   bool _refreshInProgress = false;
+  Future<void>? _ongoingLoad;
   int? _acknowledgingAlarmId;
   String? _errorMessage;
   DateTime? _lastUpdatedAt;
@@ -76,11 +77,23 @@ class _HomeDetailsScreenState
 
   Future<void> _load({
     required bool showLoading,
-  }) async {
-    if (_refreshInProgress) {
-      return;
+  }) {
+    final running = _ongoingLoad;
+    if (running != null) {
+      return running;
     }
 
+    final request = _fetchHomeDetails(showLoading: showLoading);
+    final tracked = request.whenComplete(() {
+      _ongoingLoad = null;
+    });
+    _ongoingLoad = tracked;
+    return tracked;
+  }
+
+  Future<void> _fetchHomeDetails({
+    required bool showLoading,
+  }) async {
     _refreshInProgress = true;
 
     if (mounted && showLoading) {
@@ -166,8 +179,8 @@ class _HomeDetailsScreenState
     Alarm alarm,
   ) async {
     if (!_canManageAlarms ||
-        _acknowledgingAlarmId !=
-            null) {
+        alarm.status != 'active' ||
+        _acknowledgingAlarmId != null) {
       return;
     }
 
@@ -195,6 +208,16 @@ class _HomeDetailsScreenState
           ),
         ),
       );
+
+      // A refresh started before the POST may return the old 'active'
+      // alarm. Wait for it, then force a fresh read after the mutation.
+      final running = _ongoingLoad;
+      if (running != null) {
+        await running;
+      }
+      if (!mounted) {
+        return;
+      }
 
       await _load(
         showLoading: false,
