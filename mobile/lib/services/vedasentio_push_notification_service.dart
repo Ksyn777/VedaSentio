@@ -6,10 +6,21 @@ import 'package:flutter/foundation.dart';
 
 import '../models/alarm_notification_target.dart';
 import 'auth_service.dart';
+import 'push_token_registration_coordinator.dart';
+import 'push_token_revocation_registry.dart';
 
 class VedaSentioPushNotificationService {
+  VedaSentioPushNotificationService({
+    Future<String?> Function()? currentTokenReader,
+  }) : _currentTokenReader = currentTokenReader;
+
+  final Future<String?> Function()? _currentTokenReader;
+
   StreamSubscription<RemoteMessage>?
       _notificationOpenedSubscription;
+  PushTokenRegistrationCoordinator? _tokenRegistration;
+  int _registrationGeneration = 0;
+  final PushTokenRevocationRegistry _revokePending = PushTokenRevocationRegistry();
 
   Future<void> startAlarmNotificationOpenHandling(
     void Function(
@@ -72,9 +83,9 @@ class VedaSentioPushNotificationService {
       handleAlarmNotificationOpened(
         initialNotificationTarget,
       );
-    } catch (error) {
+    } catch (_) {
       debugPrint(
-        '[PUSH] Nie udało się uruchomić obsługi kliknięcia powiadomienia: $error',
+        '[PUSH] Nie udało się uruchomić obsługi kliknięcia powiadomienia.',
       );
     }
   }
@@ -82,62 +93,121 @@ class VedaSentioPushNotificationService {
   Future<bool> registerCurrentMobileDevice(
     AuthService authService,
   ) async {
-    bool mobilePlatformIsSupported =
-        _isSupportedMobilePlatform();
+    // A previous session must never own this account's token refresh stream.
+    stopMobileTokenRegistration();
+    final generation = _registrationGeneration;
 
-    if (!mobilePlatformIsSupported) {
+    if (!_isSupportedMobilePlatform()) {
       return false;
     }
 
     try {
       await _initializeFirebaseIfNeeded();
+      if (generation != _registrationGeneration) {
+        return false;
+      }
 
-      FirebaseMessaging firebaseMessaging =
-          FirebaseMessaging.instance;
-
-      NotificationSettings notificationSettings =
-          await firebaseMessaging.requestPermission(
+      final firebaseMessaging = FirebaseMessaging.instance;
+      final settings = await firebaseMessaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
-
-      if (notificationSettings.authorizationStatus ==
-          AuthorizationStatus.denied) {
+      if (generation != _registrationGeneration ||
+          settings.authorizationStatus == AuthorizationStatus.denied) {
         return false;
       }
 
-      String? firebaseCloudMessagingToken =
-          await firebaseMessaging.getToken();
-
-      if (firebaseCloudMessagingToken == null) {
+      final currentToken = await firebaseMessaging.getToken();
+      if (generation != _registrationGeneration ||
+          currentToken == null ||
+          currentToken.trim().isEmpty) {
         return false;
       }
 
-      if (firebaseCloudMessagingToken.isEmpty) {
-        return false;
+      final platform = _getMobilePlatformName();
+      final registration = PushTokenRegistrationCoordinator(
+        (token) async {
+          // The backend may commit a POST even if the response times out.
+          // Treat every attempted token as potentially registered.
+          _revokePending.noteAttempt(token);
+          await authService.registerMobilePushNotificationToken(
+            token,
+            platform,
+          );
+        },
+        onStreamError: () {
+          debugPrint('[PUSH] Nie udało się odczytać nowego tokena FCM.');
+        },
+      );
+      _tokenRegistration = registration;
+      registration.start(firebaseMessaging.onTokenRefresh);
+
+      final succeeded = await registration.register(currentToken);
+      if (succeeded) {
+        debugPrint('[PUSH] Urządzenie mobilne zostało zarejestrowane.');
+      } else {
+        debugPrint('[PUSH] Rejestracja urządzenia nie powiodła się.');
       }
-
-      String mobilePlatformName =
-          _getMobilePlatformName();
-
-      await authService.registerMobilePushNotificationToken(
-        firebaseCloudMessagingToken,
-        mobilePlatformName,
-      );
-
-      debugPrint(
-        '[PUSH] Urządzenie mobilne zostało zarejestrowane.',
-      );
-
-      return true;
-    } catch (error) {
-      debugPrint(
-        '[PUSH] Nie udało się zarejestrować urządzenia: $error',
-      );
-
+      return succeeded;
+    } catch (_) {
+      debugPrint('[PUSH] Nie udało się zarejestrować urządzenia.');
       return false;
     }
+  }
+
+  void stopMobileTokenRegistration() {
+    _registrationGeneration++;
+    _tokenRegistration?.stop();
+    _tokenRegistration = null;
+  }
+
+  /// Returns true only if the backend confirmed revocation of every
+  /// successfully registered token from this session.
+  ///
+  /// Stops refreshes and waits for in-flight HTTP registrations before
+  /// revoking, so a late registration cannot overwrite a successful logout.
+  Future<bool> unregisterCurrentMobileDeviceForLogout(
+    AuthService authService,
+  ) async {
+    final previousRegistration = _tokenRegistration;
+    stopMobileTokenRegistration();
+    if (previousRegistration != null) {
+      await previousRegistration.idle;
+    }
+
+    // A token from an earlier app start may still be active in PostgreSQL
+    // even if this session never completed its initial registration.
+    var tokenLookupFailed = false;
+    if (_isSupportedMobilePlatform() || _currentTokenReader != null) {
+      try {
+        if (_currentTokenReader == null) {
+          await _initializeFirebaseIfNeeded();
+        }
+        final token = _currentTokenReader != null
+            ? await _currentTokenReader()
+            : await FirebaseMessaging.instance.getToken();
+        if (token == null || token.trim().isEmpty) {
+          tokenLookupFailed = true;
+        } else {
+          _revokePending.noteAttempt(token);
+        }
+      } catch (_) {
+        // No reassurance if the current token cannot be checked.
+        tokenLookupFailed = true;
+      }
+    }
+
+    final allRevoked = await _revokePending.revokeAll(
+      authService.unregisterMobilePushNotificationToken,
+    );
+    return allRevoked && !tokenLookupFailed;
+  }
+
+  /// Called only after local logout. Failed tokens must not be retried
+  /// under the JWT of another account.
+  void clearRegisteredTokenHistory() {
+    _revokePending.clear();
   }
 
   Future<void> _initializeFirebaseIfNeeded() async {
@@ -181,7 +251,12 @@ class VedaSentioPushNotificationService {
   }
 
   void dispose() {
-    _notificationOpenedSubscription
-        ?.cancel();
+    stopMobileTokenRegistration();
+    clearRegisteredTokenHistory();
+    final subscription = _notificationOpenedSubscription;
+    _notificationOpenedSubscription = null;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
   }
 }

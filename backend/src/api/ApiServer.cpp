@@ -8,6 +8,9 @@
 #include "../users/UserRepository.h"
 
 #include <httplib.h>
+
+#include <algorithm>
+#include <charconv>
 #include <nlohmann/json.hpp>
 
 #include <iostream>
@@ -189,6 +192,37 @@ bool require_alarm_management_role(
     );
 
     return false;
+}
+
+std::optional<long long> parse_positive_decimal(const std::string& value)
+{
+    if (value.empty())
+        return std::nullopt;
+
+    long long number = 0;
+    const auto parsed = std::from_chars(
+        value.data(),
+        value.data() + value.size(),
+        number
+    );
+
+    if (parsed.ec != std::errc{} ||
+        parsed.ptr != value.data() + value.size() ||
+        number <= 0)
+    {
+        return std::nullopt;
+    }
+
+    return number;
+}
+
+std::optional<int> parse_query_limit(const std::string& value)
+{
+    const auto parsed = parse_positive_decimal(value);
+    if (!parsed.has_value())
+        return std::nullopt;
+
+    return static_cast<int>(std::min(*parsed, 500LL));
 }
 
 std::optional<std::string> bearer_token(
@@ -864,33 +898,17 @@ void ApiServer::start(
 
                 int limit = 100;
 
-                if (
-                    request.has_param(
-                        "limit"
-                    )
-                )
+                if (request.has_param("limit"))
                 {
-                    try
+                    const auto parsed = parse_query_limit(
+                        request.get_param_value("limit")
+                    );
+                    if (!parsed.has_value())
                     {
-                        limit =
-                            std::stoi(
-                                request.get_param_value(
-                                    "limit"
-                                )
-                            );
-                    }
-                    catch (...)
-                    {
-                        send_json(
-                            response,
-                            {
-                                {"error", "Invalid limit parameter."}
-                            },
-                            400
-                        );
-
+                        send_json(response, {{"error", "Invalid limit parameter."}}, 400);
                         return;
                     }
+                    limit = *parsed;
                 }
 
                 nlohmann::json body =
@@ -1054,28 +1072,26 @@ void ApiServer::start(
                     const std::string value =
                         request.get_param_value("active");
 
-                    active_only =
-                        value == "true" ||
-                        value == "1";
+                    if (value != "true" && value != "false" &&
+                        value != "1" && value != "0")
+                    {
+                        send_json(response, {{"error", "Invalid active parameter."}}, 400);
+                        return;
+                    }
+                    active_only = value == "true" || value == "1";
                 }
 
                 if (request.has_param("limit"))
                 {
-                    try
+                    const auto parsed = parse_query_limit(
+                        request.get_param_value("limit")
+                    );
+                    if (!parsed.has_value())
                     {
-                        limit = std::stoi(
-                            request.get_param_value("limit")
-                        );
-                    }
-                    catch (...)
-                    {
-                        send_json(
-                            response,
-                            {{"error", "Invalid limit parameter."}},
-                            400
-                        );
+                        send_json(response, {{"error", "Invalid limit parameter."}}, 400);
                         return;
                     }
+                    limit = *parsed;
                 }
 
                 nlohmann::json body = nlohmann::json::array();
@@ -1127,7 +1143,6 @@ void ApiServer::start(
             try
             {
                 const std::string home_id = request.matches[1];
-                const long long alarm_id = std::stoll(request.matches[2].str());
 
                 if (!require_home_access(
                         *user,
@@ -1149,9 +1164,18 @@ void ApiServer::start(
                     return;
                 }
 
+                const auto parsed_alarm_id = parse_positive_decimal(
+                    request.matches[2].str()
+                );
+                if (!parsed_alarm_id.has_value())
+                {
+                    send_json(response, {{"error", "Invalid alarm identifier."}}, 400);
+                    return;
+                }
+
                 const auto alarm = alarms_.acknowledge_alarm(
                     home_id,
-                    alarm_id,
+                    *parsed_alarm_id,
                     user->id
                 );
 
@@ -1381,6 +1405,67 @@ void ApiServer::start(
                     },
                     500
                 );
+            }
+        }
+    );
+
+    // Only the current authenticated user may revoke this token. Returning
+    // the same result for an absent/foreign token prevents enumeration.
+    server.Delete(
+        "/api/mobile-devices/push-token",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user = authenticated_user(
+                request, response, users_, jwt_
+            );
+            if (!user.has_value())
+                return;
+
+            if (request.body.size() > 16384)
+            {
+                send_json(response, {{"error", "Request body is too large."}}, 413);
+                return;
+            }
+
+            nlohmann::json body;
+            try
+            {
+                body = nlohmann::json::parse(request.body);
+            }
+            catch (...)
+            {
+                send_json(response, {{"error", "Invalid JSON body."}}, 400);
+                return;
+            }
+
+            if (!body.is_object() ||
+                !body.contains("fcm_token") ||
+                !body["fcm_token"].is_string())
+            {
+                send_json(response, {{"error", "FCM token is required."}}, 400);
+                return;
+            }
+
+            const std::string token = body["fcm_token"].get<std::string>();
+            if (token.empty() || token.size() > 8192)
+            {
+                send_json(response, {{"error", "Invalid FCM token."}}, 400);
+                return;
+            }
+
+            try
+            {
+                database_.deactivate_mobile_push_notification_token(user->id, token);
+                send_json(response, {{"status", "unregistered"}});
+            }
+            catch (const std::exception&)
+            {
+                // Do not log FCM tokens or database errors containing secrets.
+                std::cerr << "[API] Could not unregister mobile push token.\n";
+                send_json(response, {{"error", "Unable to unregister device."}}, 500);
             }
         }
     );

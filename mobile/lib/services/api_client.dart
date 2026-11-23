@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -8,12 +10,33 @@ import 'api_exception.dart';
 class ApiClient {
   ApiClient({
     http.Client? client,
-  }) : _client = client ?? http.Client();
+    Duration timeout = const Duration(seconds: 10),
+  })  : _client = client ?? http.Client(),
+        _timeout = timeout;
 
   final http.Client _client;
+  final Duration _timeout;
 
-  static const _timeout =
-      Duration(seconds: 10);
+  // HTTP 401/403 responses stay intact; only transport failures are mapped.
+  Future<http.Response> _request(
+    Future<http.Response> Function() send,
+  ) async {
+    try {
+      return await send().timeout(_timeout);
+    } on TimeoutException {
+      throw const ApiException(
+        'Przekroczono czas połączenia. Spróbuj ponownie.',
+      );
+    } on SocketException {
+      throw const ApiException(
+        'Brak połączenia z serwerem. Sprawdź sieć i spróbuj ponownie.',
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        'Nie udało się połączyć z serwerem. Spróbuj ponownie.',
+      );
+    }
+  }
 
   Uri _uri(String path) =>
       Uri.parse(
@@ -75,13 +98,13 @@ class ApiClient {
     String path,
     Map<String, dynamic> body,
   ) async {
-    final response = await _client
-        .post(
-          _uri(path),
-          headers: _headers(),
-          body: jsonEncode(body),
-        )
-        .timeout(_timeout);
+    final response = await _request(
+      () => _client.post(
+        _uri(path),
+        headers: _headers(),
+        body: jsonEncode(body),
+      ),
+    );
 
     final decoded = _decode(response);
     _check(response, decoded);
@@ -101,15 +124,13 @@ class ApiClient {
     String token, {
     Map<String, dynamic>? body,
   }) async {
-    final response = await _client
-        .post(
-          _uri(path),
-          headers: _headers(token),
-          body: jsonEncode(
-            body ?? <String, dynamic>{},
-          ),
-        )
-        .timeout(_timeout);
+    final response = await _request(
+      () => _client.post(
+        _uri(path),
+        headers: _headers(token),
+        body: jsonEncode(body ?? <String, dynamic>{}),
+      ),
+    );
 
     final decoded = _decode(response);
     _check(response, decoded);
@@ -127,12 +148,12 @@ class ApiClient {
     String path,
     String token,
   ) async {
-    final response = await _client
-        .get(
-          _uri(path),
-          headers: _headers(token),
-        )
-        .timeout(_timeout);
+    final response = await _request(
+      () => _client.get(
+        _uri(path),
+        headers: _headers(token),
+      ),
+    );
 
     final decoded = _decode(response);
     _check(response, decoded);
@@ -150,12 +171,12 @@ class ApiClient {
     String path,
     String token,
   ) async {
-    final response = await _client
-        .get(
-          _uri(path),
-          headers: _headers(token),
-        )
-        .timeout(_timeout);
+    final response = await _request(
+      () => _client.get(
+        _uri(path),
+        headers: _headers(token),
+      ),
+    );
 
     final decoded = _decode(response);
     _check(response, decoded);
@@ -166,6 +187,28 @@ class ApiClient {
       );
     }
 
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> deleteAuthorized(
+    String path,
+    String token, {
+    required Map<String, dynamic> body,
+  }) async {
+    final response = await _request(
+      () => _client.delete(
+        _uri(path),
+        headers: _headers(token),
+        body: jsonEncode(body),
+      ),
+    );
+
+    final decoded = _decode(response);
+    _check(response, decoded);
+
+    if (decoded is! Map<String, dynamic>) {
+      throw const ApiException('Nieoczekiwany format odpowiedzi.');
+    }
     return decoded;
   }
 

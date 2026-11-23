@@ -45,6 +45,7 @@ class _HomeDetailsScreenState
 
   bool _loading = true;
   bool _refreshInProgress = false;
+  Future<void>? _ongoingLoad;
   int? _acknowledgingAlarmId;
   String? _errorMessage;
   DateTime? _lastUpdatedAt;
@@ -76,11 +77,23 @@ class _HomeDetailsScreenState
 
   Future<void> _load({
     required bool showLoading,
-  }) async {
-    if (_refreshInProgress) {
-      return;
+  }) {
+    final running = _ongoingLoad;
+    if (running != null) {
+      return running;
     }
 
+    final request = _fetchHomeDetails(showLoading: showLoading);
+    final tracked = request.whenComplete(() {
+      _ongoingLoad = null;
+    });
+    _ongoingLoad = tracked;
+    return tracked;
+  }
+
+  Future<void> _fetchHomeDetails({
+    required bool showLoading,
+  }) async {
     _refreshInProgress = true;
 
     if (mounted && showLoading) {
@@ -130,6 +143,11 @@ class _HomeDetailsScreenState
       }
 
       setState(() {
+        if (error.isForbidden) {
+          // Revoked access must not leave cached home details on screen.
+          _data = null;
+          _lastUpdatedAt = null;
+        }
         _errorMessage =
             error.isForbidden
                 ? 'Nie masz dostępu do tego gospodarstwa.'
@@ -161,8 +179,8 @@ class _HomeDetailsScreenState
     Alarm alarm,
   ) async {
     if (!_canManageAlarms ||
-        _acknowledgingAlarmId !=
-            null) {
+        alarm.status != 'active' ||
+        _acknowledgingAlarmId != null) {
       return;
     }
 
@@ -190,6 +208,16 @@ class _HomeDetailsScreenState
           ),
         ),
       );
+
+      // A refresh started before the POST may return the old 'active'
+      // alarm. Wait for it, then force a fresh read after the mutation.
+      final running = _ongoingLoad;
+      if (running != null) {
+        await running;
+      }
+      if (!mounted) {
+        return;
+      }
 
       await _load(
         showLoading: false,
@@ -400,17 +428,12 @@ class _HomeDetailsScreenState
 
     final data = _data!;
 
+    final activeDeviceCount = data.devices.where((device) => device.isActive).length;
     final onlineCount = data.devices
-        .where(
-          (device) => device.isOnline,
-        )
+        .where((device) => device.isActive && device.isOnline)
         .length;
 
-    final offlineDeviceCount = data.devices
-        .where(
-          (device) => device.isActive && !device.isOnline,
-        )
-        .length;
+    final offlineDeviceCount = activeDeviceCount - onlineCount;
 
     final safetyStatus = AlarmStatusService.fromBackendAlarms(
       data.activeAlarms,
@@ -467,14 +490,12 @@ class _HomeDetailsScreenState
         const SizedBox(
           height: 18,
         ),
-        const _HomePhotoPlaceholder(),
-        const SizedBox(
-          height: 14,
-        ),
         _SafetyStatusCard(
           status: safetyStatus,
           activeAlarmCount: data.activeAlarms.length,
           offlineDeviceCount: offlineDeviceCount,
+          hasActiveDevices: activeDeviceCount > 0,
+          isStale: _errorMessage != null,
         ),
         const SizedBox(
           height: 14,
@@ -482,6 +503,8 @@ class _HomeDetailsScreenState
         _LiveMonitoringCard(
           lastUpdatedLabel: _lastUpdatedLabel(),
           refreshSeconds: _autoRefreshInterval.inSeconds,
+          isStale: _errorMessage != null,
+          isInactive: activeDeviceCount == 0,
         ),
         const SizedBox(
           height: 14,
@@ -490,7 +513,7 @@ class _HomeDetailsScreenState
           homeName: widget.home.name,
           role: widget.home.role,
           onlineCount: onlineCount,
-          deviceCount: data.devices.length,
+          deviceCount: activeDeviceCount,
           offlineDeviceCount: offlineDeviceCount,
         ),
         if (_errorMessage != null) ...[
@@ -543,10 +566,14 @@ class _HomeDetailsScreenState
           height: 10,
         ),
         if (data.activeAlarms.isEmpty)
-          const _SimpleInfoCard(
+          _SimpleInfoCard(
             icon: Icons.verified_user_outlined,
             title: 'Brak aktywnych alarmów',
-            subtitle: 'Aktualnie backend nie zgłasza zagrożeń.',
+            subtitle: _errorMessage != null
+                ? 'Brak alarmów w ostatnich danych. Nie można potwierdzić obecnego stanu.'
+                : activeDeviceCount == 0
+                    ? 'Bez aktywnych czujników nie można potwierdzić stanu domu.'
+                    : 'W ostatnim odczycie API nie ma aktywnych alarmów.',
           )
         else
           ...data.activeAlarms.map(
@@ -684,185 +711,154 @@ class _HomeDetailsScreenState
   }
 }
 
-class _HomePhotoPlaceholder extends StatelessWidget {
-  const _HomePhotoPlaceholder();
-
-  @override
-  Widget build(
-    BuildContext context,
-  ) {
-    return Container(
-      height: 128,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF6EEE5),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: const Color(0xFFE9DDD1),
-        ),
-      ),
-      child: const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.photo_camera_outlined,
-              size: 30,
-              color: Color(0xFF7B6D64),
-            ),
-            SizedBox(
-              height: 8,
-            ),
-            Text(
-              'Miejsce na zdjęcie domu',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF4A3C35),
-              ),
-            ),
-            SizedBox(
-              height: 3,
-            ),
-            Text(
-              'Zdjęcie wybierzesz później',
-              style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFF81746C),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _SafetyStatusCard extends StatelessWidget {
   const _SafetyStatusCard({
     required this.status,
     required this.activeAlarmCount,
     required this.offlineDeviceCount,
+    required this.hasActiveDevices,
+    required this.isStale,
   });
 
   final HomeSafetyStatus status;
   final int activeAlarmCount;
   final int offlineDeviceCount;
+  final bool hasActiveDevices;
+  final bool isStale;
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    bool hasMonitoringProblem =
-        status.level == SafetyLevel.safe && offlineDeviceCount > 0;
+  Widget build(BuildContext context) {
+    final hasAlarm = status.level == SafetyLevel.alarm;
+    final hasWarning = status.level == SafetyLevel.warning ||
+        offlineDeviceCount > 0;
+    final unknown = isStale || !hasActiveDevices;
 
-    SafetyLevel displayedLevel = hasMonitoringProblem
-        ? SafetyLevel.warning
-        : status.level;
-
-    String displayedTitle = hasMonitoringProblem
-        ? 'Ostrzeżenie'
-        : status.title;
-
-    String displayedMessage;
-
-    if (hasMonitoringProblem) {
-      if (offlineDeviceCount == 1) {
-        displayedMessage =
-            'Jedno urządzenie nie odpowiada. Sprawdź połączenie lub zasilanie.';
-      } else {
-        displayedMessage =
-            '$offlineDeviceCount urządzenia nie odpowiadają. Sprawdź połączenie lub zasilanie.';
-      }
+    // An unmonitored or disconnected home cannot be confirmed safe.
+    final String title;
+    final String message;
+    if (hasAlarm) {
+      title = isStale ? 'ALARM — dane nieaktualne' : 'ALARM';
+      message = isStale
+          ? status.message + ' Brak bieżącego połączenia z serwerem.'
+          : status.message;
+    } else if (isStale) {
+      title = 'Stan niepotwierdzony';
+      message = 'Ostatni odczyt jest nieaktualny. '
+          'Nie można potwierdzić obecnego stanu domu.';
+    } else if (!hasActiveDevices) {
+      title = 'Monitoring nieaktywny';
+      message = 'Brak aktywnych czujników. '
+          'System nie może jeszcze potwierdzać bezpieczeństwa domu.';
+    } else if (hasWarning) {
+      title = 'Wymagana uwaga';
+      message = offlineDeviceCount > 0 && status.level == SafetyLevel.safe
+          ? 'Nie wszystkie aktywne urządzenia odpowiadają. '
+              'Sprawdź połączenie lub zasilanie.'
+          : status.message;
     } else {
-      displayedMessage = status.message;
+      title = 'Brak aktywnych alarmów';
+      message = 'Ostatni odczyt API nie wykazał aktywnych alarmów.';
     }
 
-    final background = switch (displayedLevel) {
-      SafetyLevel.safe => const Color(0xFF2F8F4E),
-      SafetyLevel.warning => const Color(0xFFF28C28),
-      SafetyLevel.alarm => const Color(0xFFD92D20),
-    };
-
-    final icon = switch (displayedLevel) {
-      SafetyLevel.safe => Icons.verified_user_outlined,
-      SafetyLevel.warning => Icons.warning_amber_outlined,
-      SafetyLevel.alarm => Icons.crisis_alert,
-    };
+    final Color accent;
+    final Color tint;
+    final IconData icon;
+    if (hasAlarm) {
+      accent = const Color(0xFFAD302D);
+      tint = const Color(0xFFFBEDEA);
+      icon = Icons.crisis_alert;
+    } else if (unknown) {
+      accent = const Color(0xFF52636B);
+      tint = const Color(0xFFEDF0EF);
+      icon = Icons.help_outline_rounded;
+    } else if (hasWarning) {
+      accent = const Color(0xFF936C31);
+      tint = const Color(0xFFFBF0DA);
+      icon = Icons.warning_amber_outlined;
+    } else {
+      accent = const Color(0xFF165D55);
+      tint = const Color(0xFFE6F2EE);
+      icon = Icons.verified_outlined;
+    }
 
     return Container(
       decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: [
-          BoxShadow(
-            color: background.withValues(
-              alpha: 0.20,
-            ),
-            blurRadius: 18,
-            offset: const Offset(
-              0,
-              8,
-            ),
-          ),
-        ],
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFDFE3E0)),
       ),
-      padding: const EdgeInsets.all(20),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.18,
+          Row(
+            children: [
+              Text(
+                'STAN MONITORINGU',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                ),
               ),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: 30,
-            ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: tint,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Text(
+                  unknown ? 'NIEPOTWIERDZONY' : 'OSTATNI ODCZYT',
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(
-            width: 14,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  displayedTitle,
+          const SizedBox(height: 15),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 42,
+                width: 42,
+                decoration: BoxDecoration(
+                  color: tint,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: accent, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(
-                  height: 5,
-                ),
-                Text(
-                  displayedMessage,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    height: 1.35,
+                    color: const Color(0xFF202D31),
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (activeAlarmCount > 0) ...[
-                  const SizedBox(
-                    height: 10,
-                  ),
-                  Text(
-                    'Aktywne alarmy: $activeAlarmCount',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            style: const TextStyle(color: Color(0xFF57666A), height: 1.4),
+          ),
+          if (activeAlarmCount > 0) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Aktywne alarmy: $activeAlarmCount',
+              style: TextStyle(color: accent, fontWeight: FontWeight.w700),
+            ),
+          ],
         ],
       ),
     );
@@ -873,10 +869,14 @@ class _LiveMonitoringCard extends StatelessWidget {
   const _LiveMonitoringCard({
     required this.lastUpdatedLabel,
     required this.refreshSeconds,
+    required this.isStale,
+    required this.isInactive,
   });
 
   final String lastUpdatedLabel;
   final int refreshSeconds;
+  final bool isStale;
+  final bool isInactive;
 
   @override
   Widget build(
@@ -896,10 +896,16 @@ class _LiveMonitoringCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.sync,
+          Icon(
+            isStale
+                ? Icons.cloud_off_outlined
+                : isInactive
+                    ? Icons.sensors_off_outlined
+                    : Icons.sync,
             size: 20,
-            color: Color(0xFFB85C3B),
+            color: isStale || isInactive
+                ? const Color(0xFF52636B)
+                : const Color(0xFF165D55),
           ),
           const SizedBox(
             width: 10,
@@ -908,9 +914,13 @@ class _LiveMonitoringCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Monitoring na żywo',
-                  style: TextStyle(
+                Text(
+                  isStale
+                      ? 'Dane nieaktualne'
+                      : isInactive
+                          ? 'Brak aktywnych czujników'
+                          : 'Monitoring na żywo',
+                  style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF3A2A24),
                   ),
@@ -919,7 +929,11 @@ class _LiveMonitoringCard extends StatelessWidget {
                   height: 2,
                 ),
                 Text(
-                  'Odświeżanie co $refreshSeconds s • ostatnio $lastUpdatedLabel',
+                  isStale
+                      ? 'Nie można potwierdzić obecnego stanu • ostatnio $lastUpdatedLabel'
+                      : isInactive
+                          ? 'Odczyt API: $lastUpdatedLabel • brak aktywnego monitoringu'
+                          : 'Odświeżanie co $refreshSeconds s • ostatnio $lastUpdatedLabel',
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF7B6D64),
