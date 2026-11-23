@@ -1,7 +1,7 @@
 # VedaSentio — potwierdzanie alarmów i szczegóły Flutter (#19)
 
 ## Zakres i zależności
-Ta gałąź jest oparta na PR #45 (obsługa błędów sieci Flutter); **nie jest jeszcze scalona do master**. Istniejące ekrany pozostają w użyciu, bez przebudowy interfejsu.
+PR #45 (obsługa błędów sieci Flutter) został scalony do `master`. Ten PR zachowuje także ochronę przed pokazywaniem danych po odebraniu `403`. Istniejące ekrany pozostają w użyciu, bez przebudowy interfejsu.
 
 ### Zmiany
 - Po pomyślnym POST potwierdzającym alarm aplikacja czeka na starszy, ewentualnie trwający GET monitoringu, po czym **wymusza nowy odczyt**. Stare dane nie mogą zostawić przycisku „Potwierdź alarm” widocznego po udanym potwierdzeniu.
