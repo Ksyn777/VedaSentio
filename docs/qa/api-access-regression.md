@@ -28,4 +28,33 @@ Workflow to jedno zadanie na standardowym Ubuntu 24.04, z timeoutem 14 minut. Ni
 
 ## Odbiór lokalny
 
+### Aktualizacja po PR #41, #56 i #57 — 2026-11-23
+
+Gałąź PR #44 została zaktualizowana zwykłym merge z `origin/master`
+(`7f624ad5`), bez konfliktów i bez przepisywania historii. Parser MQTT,
+reconnect, regresja alarmów oraz główny workflow CI pozostały bez zmian.
+
+Rozszerzony zestaw ma **91 kontroli HTTP**. Oprócz dotychczasowych przypadków
+obejmuje brak/nieprawidłowy JWT na kolejnych trasach, prawidłowo podpisany,
+ale wygasły JWT, błędny JSON i typy pól, puste limity i prefiks `+`, historię
+zakończonego alarmu, zachowanie autora ponownego potwierdzenia oraz walidację
+rozmiaru i treści rejestracji push. Nienumeryczne ID nie pasują do trasy
+potwierdzania i zwracają standardowe 404 routera; nie jest to odpowiedź JSON
+API. Numeryczne zero i overflow nadal dają kontrolowane JSON 400.
+
+Wykonano lokalnie w jednorazowych kontenerach Ubuntu 24.04 i PostgreSQL 17:
+
+- HTTP API i sprzątanie danych: **91/91 PASS**;
+- istniejąca regresja alarmów #41: **PASS**, z ASan/UBSan według runnera;
+- istniejący test parsera #56: **PASS**;
+- istniejący test cyklu MQTT #57: **PASS**, z symulowanym transportem;
+- składnia Python/Bash i `git diff --check`: **PASS**.
+
+PostgreSQL testowy nie publikował portów na hoście; dane trzymano w tmpfs.
+Oddzielne bazy `vedasentio_api_ci` i `vedasentio_alarm_ci` nie współdzieliły
+danych z istniejącymi projektami. Repozytorium było zamontowane tylko do
+odczytu; kompilacja odbywała się na kopii w kontenerze. Libpqxx 7.10.7
+zweryfikowano względem commita używanego w workflow. Nie wykonywano testu
+fizycznego ESP32, telefonu, dostarczania FCM ani pełnego MQTT → API → Flutter.
+
 Po zaakceptowaniu zmian sprawdź logowanie oraz przełączanie pomiędzy użytkownikiem z przypisanym i nieprzypisanym gospodarstwem w Flutter. Zaloguj się jako `viewer` i sprawdź odmowę potwierdzenia alarmu, następnie jako `caregiver` i `owner` sprawdź potwierdzenie. Sprawdź komunikaty przy zerwaniu sieci. Bez lokalnego odbioru nie zamykaj zadania #17.

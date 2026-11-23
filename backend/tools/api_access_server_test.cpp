@@ -126,6 +126,17 @@ int main() {
         seed_users(users);
         seed_alarms(db, alarms);
 
+        // A resolved record distinguishes full history from the open-only
+        // query without changing the two active alarm fixtures above.
+        {
+            pqxx::connection conn(connection_string);
+            pqxx::work tx(conn);
+            tx.exec("INSERT INTO alarms(home_id,device_id,alarm_type,severity,status,"
+                    "resolved_at,resolution_source) VALUES "
+                    "('api_home_ci','sos_one','sos','critical','resolved',NOW(),'sensor')");
+            tx.commit();
+        }
+
         ApiServer server(db, users, jwt, alarms);
         std::cout << "[API-CI] FIXTURES_READY\n";
         server.start("127.0.0.1", listen_port);

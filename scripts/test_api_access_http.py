@@ -5,6 +5,10 @@ No production URLs, emails, passwords, tokens or real device identifiers.
 """
 import json
 import os
+import base64
+import hashlib
+import hmac
+import time
 import urllib.error
 import urllib.request
 
@@ -13,10 +17,10 @@ PASSWORD = os.environ["VEDASENTIO_API_TEST_PASSWORD"]
 checks = 0
 
 
-def call(method, path, token=None, payload=None):
+def call(method, path, token=None, payload=None, cache_required=True):
     data = None
     if payload is not None:
-        data = json.dumps(payload).encode("utf-8")
+        data = payload if isinstance(payload, bytes) else json.dumps(payload).encode("utf-8")
     elif method == "POST":
         data = b"{}"
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
@@ -34,15 +38,16 @@ def call(method, path, token=None, payload=None):
         code = error.code
         raw = error.read()
         result_headers = dict(error.headers.items())
-    body = json.loads(raw) if raw else None
-    assert result_headers.get("Cache-Control") == "no-store", (
-        "Missing cache security header: " + path)
+    body = json.loads(raw) if raw and cache_required else None
+    if cache_required:
+        assert result_headers.get("Cache-Control") == "no-store", (
+            "Missing cache security header: " + path)
     return code, body, result_headers
 
 
-def expect(code, method, path, *, token=None, payload=None):
+def expect(code, method, path, *, token=None, payload=None, cache_required=True):
     global checks
-    actual, body, headers = call(method, path, token, payload)
+    actual, body, headers = call(method, path, token, payload, cache_required)
     assert actual == code, (
         f"Expected {code}, got {actual}: {method} {path}")
     checks += 1
@@ -58,6 +63,19 @@ def login(email):
     return body["access_token"]
 
 
+def expired_token(token):
+    """Sign an expired fixture token with this disposable run's random key."""
+    header, payload, _ = token.split(".")
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    claims["iat"] = int(time.time()) - 7200
+    claims["exp"] = int(time.time()) - 3600
+    encoded = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+    signing_input = header + "." + encoded
+    key = base64.b64decode(os.environ["VEDASENTIO_JWT_SIGNING_KEY_B64"])
+    signature = hmac.new(key, signing_input.encode(), hashlib.sha256).digest()
+    return signing_input + "." + base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
+
+
 def main():
     expect(200, "GET", "/api/health")
     missing = expect(401, "GET", "/api/me")
@@ -70,6 +88,23 @@ def main():
     caregiver = login("api-caregiver@example.invalid")
     viewer = login("api-viewer@example.invalid")
     outsider = login("api-outsider@example.invalid")
+
+    for suffix in ("/events", "/devices/sos_one/latest", "/alarms"):
+        expect(401, "GET", "/api/homes/api_home_ci" + suffix)
+    for method, path in (
+        ("GET", "/api/homes/api_home_ci/devices"),
+        ("GET", "/api/homes/api_home_ci/events"),
+        ("GET", "/api/homes/api_home_ci/devices/sos_one/latest"),
+        ("GET", "/api/homes/api_home_ci/alarms"),
+        ("POST", "/api/homes/api_home_ci/alarms/1/acknowledge"),
+        ("POST", "/api/mobile-devices/push-token"),
+    ):
+        expect(401, method, path, token="not.a.jwt")
+    expired = expired_token(owner)
+    expect(401, "GET", "/api/me", token=expired)
+    expect(401, "POST", "/api/homes/api_home_ci/alarms/1/acknowledge", token=expired)
+    for invalid_body in (b"not-json", [], {"email": 1, "password": "test"}):
+        expect(400, "POST", "/api/auth/login", payload=invalid_body)
 
     expect(401, "GET", "/api/me", token=owner + "tampered")
     expect(401, "GET", "/api/homes", token="not.a.jwt")
@@ -112,8 +147,8 @@ def main():
         limited = expect(200, "GET", base + "?limit=1", token=owner)
         assert len(limited) == 1
         bounded = expect(200, "GET", base + "?limit=10000", token=owner)
-        assert len(bounded) == 2
-        for raw in ("0", "-1", "3abc", "1.5", "9999999999999999999999999999"):
+        assert len(bounded) == (2 if route == "events" else 3)
+        for raw in ("0", "-1", "3abc", "1.5", "", "%20", "%2B1", "9999999999999999999999999999"):
             expect(400, "GET", base + "?limit=" + raw, token=owner)
 
     for active in ("invalid", "TRUE", "2"):
@@ -148,6 +183,21 @@ def main():
     assert acknowledged_owner["id"] == b_id
     assert acknowledged_owner["status"] == "acknowledged"
 
+    for raw_id in ("-1", "abc", "12abc"):
+        # These paths do not match the numeric-ID route: httplib returns its
+        # default 404, outside send_json and its no-store response headers.
+        expect(404, "POST", f"/api/homes/api_home_ci/alarms/{raw_id}/acknowledge",
+               token=owner, cache_required=False)
+    expect(403, "POST", f"/api/homes/api_other_ci/alarms/{a_id}/acknowledge", token=owner)
+    for role_token in (owner, caregiver, viewer):
+        history = expect(200, "GET", "/api/homes/api_home_ci/alarms?active=false", token=role_token)
+        assert len(history) == 3
+        assert {a["id"] for a in history if a["status"] == "acknowledged"} == {a_id, b_id}
+        assert len([a for a in history if a["status"] == "resolved"]) == 1
+    # Repeating an authorized acknowledgement must preserve the first actor.
+    repeated = expect(200, "POST", f"/api/homes/api_home_ci/alarms/{a_id}/acknowledge", token=owner)
+    assert repeated["acknowledged_by"] == acknowledged["acknowledged_by"]
+
     # Registered mobile token is synthetic and never delivered to Firebase.
     expect(401, "POST", "/api/mobile-devices/push-token")
     expect(400, "POST", "/api/mobile-devices/push-token",
@@ -157,6 +207,17 @@ def main():
                    payload={"fcm_token": "ci-synthetic-not-a-real-fcm-token",
                             "platform": "android"})
     assert saved["status"] == "registered"
+
+    for invalid_body in (
+        b"not-json", [], {"fcm_token": 123, "platform": "android"},
+        {"fcm_token": "", "platform": "android"},
+        {"fcm_token": "synthetic", "platform": 123},
+        {"fcm_token": "synthetic"},
+        {"fcm_token": "x" * 8193, "platform": "android"},
+    ):
+        expect(400, "POST", "/api/mobile-devices/push-token", token=owner, payload=invalid_body)
+    expect(413, "POST", "/api/mobile-devices/push-token", token=owner,
+           payload={"fcm_token": "x" * 17000, "platform": "android"})
 
     expect(200, "GET", "/api/health")
     print(f"[API-CI] PASS: {checks} HTTP access, query validation and alarm cases.")
