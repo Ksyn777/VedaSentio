@@ -200,3 +200,15 @@ add_test(
     NAME vedasentio_event_parser_test
     COMMAND vedasentio_event_parser_test
 )
+
+# Compile the real client against a test-only transport boundary. The backend
+# target continues to use the real Paho headers and libraries above.
+add_executable(vedasentio_mqtt_reconnect_test
+    tools/mqtt_reconnect_lifecycle_test.cpp
+    src/mqtt/MqttClient.cpp
+)
+target_include_directories(vedasentio_mqtt_reconnect_test BEFORE PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/mqtt_test_support
+)
+target_link_libraries(vedasentio_mqtt_reconnect_test PRIVATE vedasentio_event_parser)
+add_test(NAME vedasentio_mqtt_reconnect_test COMMAND vedasentio_mqtt_reconnect_test)
