@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../models/alarm_notification_target.dart';
-import '../models/home.dart';
 import '../models/session_data.dart';
 import '../services/auth_service.dart';
 import '../services/vedasentio_push_notification_service.dart';
@@ -129,15 +128,9 @@ class _AuthGateState
       return;
     }
 
-    Home? selectedHome;
-
-    for (Home home in currentSession.homes) {
-      if (home.id ==
-          notificationTarget.homeId) {
-        selectedHome = home;
-        break;
-      }
-    }
+    final selectedHome = notificationTarget.findAccessibleHome(
+      currentSession.homes,
+    );
 
     if (selectedHome == null) {
       _pendingAlarmNotificationTarget =
@@ -184,7 +177,7 @@ class _AuthGateState
           MaterialPageRoute<void>(
             builder: (context) =>
                 HomeDetailsScreen(
-              home: selectedHome!,
+              home: selectedHome,
               authService: _auth,
               onSessionExpired: _logout,
               openedAlarmId:
@@ -211,6 +204,8 @@ class _AuthGateState
   }
 
   Future<void> _logout() async {
+    // Stop token rotations before removing the authenticated session.
+    _pushNotificationService.stopMobileTokenRegistration();
     await _auth.logout();
 
     if (!mounted) {

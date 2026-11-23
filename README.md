@@ -2,7 +2,7 @@
 
 **VedaSentio** to prototypowy system IoT wspomagający opiekę nad osobą starszą lub wymagającą nadzoru. Zdarzenia z czujników trafiają przez MQTT do backendu C++20 i PostgreSQL, a aplikacja Flutter udostępnia monitoring, aktywność i alarmy. To **projekt inżynierski**, a nie certyfikowany system alarmowy, wyrób medyczny ani zamiennik kontaktu z opiekunem i służbami ratunkowymi.
 
-> **Stan repozytorium:** gałąź `master` zawiera wersję bazową. Część poprawek bezpieczeństwa, reconnect, Flutter i FCM znajduje się w otwartych PR-ach i **nie jest jeszcze scalona**. Poniższy przewodnik opisuje pliki i komendy obecne w `master`; dla zmian z PR wymagana jest osobna weryfikacja.
+> **Stan na 23.11.2026:** `master` zawiera już poprawki monitoringu i historii Fluttera, rotację tokenów FCM oraz testowany parser odpowiedzi `UNREGISTERED` (PR #47–#50). Wyrejestrowanie tokena po logout jest przygotowane osobno w PR #52 i **nie należy traktować go jako wdrożonego**. Ten przewodnik opisuje aktualne pliki i komendy; część scenariuszy nadal wymaga lokalnego odbioru.
 
 ## Architektura
 

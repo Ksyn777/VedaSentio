@@ -1,4 +1,5 @@
 #include "PushNotificationService.h"
+#include "FcmResponseParser.h"
 
 #include <nlohmann/json.hpp>
 #include <openssl/evp.h>
@@ -676,54 +677,6 @@ std::string notification_body_for_alarm(
         home_name;
 }
 
-bool response_contains_unregistered_token(
-    const std::string& response_body
-)
-{
-    try
-    {
-        const nlohmann::json response =
-            nlohmann::json::parse(
-                response_body
-            );
-
-        if (!response.contains("error"))
-        {
-            return false;
-        }
-
-        const auto& error =
-            response["error"];
-
-        if (
-            error.contains("details") &&
-            error["details"].is_array()
-        )
-        {
-            for (
-                const auto& detail :
-                error["details"]
-            )
-            {
-                if (
-                    detail.contains("errorCode") &&
-                    detail["errorCode"].is_string() &&
-                    detail["errorCode"].get<std::string>() ==
-                        "UNREGISTERED"
-                )
-                {
-                    return true;
-                }
-            }
-        }
-    }
-    catch (...)
-    {
-        return false;
-    }
-
-    return false;
-}
 }
 
 PushNotificationService::PushNotificationService(
@@ -1181,7 +1134,7 @@ bool PushNotificationService::send_message_to_token(
     }
 
     if (
-        response_contains_unregistered_token(
+        push_response::is_unregistered(
             response.body
         )
     )

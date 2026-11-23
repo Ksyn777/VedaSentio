@@ -1,6 +1,6 @@
 # VedaSentio — architektura, przepływ danych i MQTT
 
-Ten dokument opisuje aktualną strukturę w `master`. Otwarte PR-y mogą wprowadzać dodatkowe kontrole walidacji, reconnect i poprawki mobilne — nie należy traktować niepołączonych zmian jako już obecnych w `master`.
+Dokument opisuje stan `master` na 23.11.2026. Walidator MQTT, odporność reconnect, poprawki monitoringu Fluttera, rotacja tokenów FCM i parser `UNREGISTERED` są już obecne w kodzie. Wyrejestrowanie tokena podczas wylogowania pozostaje w oddzielnym PR #52 i **nie jest jeszcze dostępne w `master`**.
 
 ## 1. Przepływ end-to-end
 
@@ -41,7 +41,7 @@ Przykład: `vedasentio/home_001/door_001/event`.
 
 - `home_id` i `device_id` określają istniejący, zarejestrowany w bazie dom i aktywne urządzenie.
 - Wspólny topic jest używany dla zdarzeń i heartbeat. `+` w subskrypcji obejmuje pojedynczy segment identyfikatora.
-- W aktualnej bazowej implementacji backend odrzuca topic o niewłaściwej liczbie segmentów, pustym identyfikatorze lub innym prefiksie/sufiksie.
+- `SensorEventParser` wymaga dokładnie czterech segmentów topicu. Identyfikatory domu i urządzenia mają maksymalnie 64 znaki i mogą zawierać tylko litery, cyfry, `_` i `-`. Zły prefiks/sufiks, pusty segment lub dodatkowe segmenty są odrzucane.
 - Broker nie dopuszcza anonimowych klientów (`allow_anonymous false`), wymaga lokalnego pliku haseł i w tej konfiguracji **nie używa TLS**. Do sieci publicznych obecna konfiguracja jest nieodpowiednia.
 
 ## 3. Payload JSON
@@ -58,11 +58,11 @@ Każdy event powinien zawierać poniższe trzy pola. Nie przekazujemy loginów, 
 
 | Pole | Typ | Znaczenie |
 | --- | --- | --- |
-| `timestamp` | string | czas zdarzenia w UTC, zalecany ISO 8601 z `Z` |
+| `timestamp` | string | wymagany czas UTC ISO 8601 z `Z`, np. `2026-11-22T12:00:00Z`; dopuszczona część ułamkowa sekund |
 | `event_type` | string | rozpoznawana nazwa zdarzenia |
-| `value` | wartość JSON | np. `true` dla otwartych drzwi; właściwy typ zależy od sensora |
+| `value` | boolean | `true` dla `heartbeat`, `door_opened`, `sos_pressed` i zdarzeń `*_detected`; `false` dla `door_closed`, `sos_resolved` i zdarzeń `*_cleared` |
 
-`home_id` i `device_id` są **w topiku**, nie muszą być powielane w JSON. Backend zapisuje także czas odbioru `received_at` nadawany przez PostgreSQL. Implementacja `master` weryfikuje obecność i podstawowe typy pól, lecz **nie** zapewnia kompletnej walidacji semantycznej każdego eventu; ostrzejsze zasady są rozwijane osobno (#14). Nie należy zakładać, że dowolny JSON zostanie bezpiecznie przetworzony.
+`home_id` i `device_id` są **w topiku**, nie muszą być powielane w JSON. Backend zapisuje także czas odbioru `received_at` nadawany przez PostgreSQL. Aktualny `SensorEventParser` odrzuca payloady przekraczające **4096 bajtów**, nieprawidłowe identyfikatory topicu, nieobsługiwane `event_type`, wartości inne niż boolean, niezgodność `value` z typem zdarzenia i błędny czas UTC. Reguły te są walidacją wejścia, **nie** oznaczają certyfikowanego działania sensorów ani bezpieczeństwa całego systemu.
 
 ## 4. Zdarzenia i alarmy
 
