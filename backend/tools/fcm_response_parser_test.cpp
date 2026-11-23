@@ -37,6 +37,18 @@ int main()
         check("unexpected detail types",
               R"({"error":{"details":[1,false,{},{"errorCode":19}]}})",
               false);
+        check("errorCode outside details is not sufficient",
+              R"({"error":{"errorCode":"UNREGISTERED"}})",
+              false);
+        check("human-readable error text is not sufficient",
+              R"({"error":{"details":[{"message":"UNREGISTERED"}]}})",
+              false);
+        check("nested errorCode without direct detail is not sufficient",
+              R"({"error":{"details":[{"nested":{"errorCode":"UNREGISTERED"}}]}})",
+              false);
+        check("case mismatch must not deactivate a token",
+              R"({"error":{"details":[{"errorCode":"unregistered"}]}})",
+              false);
         check("success response",
               R"({"name":"projects/ci/messages/1"})",
               false);
@@ -44,7 +56,7 @@ int main()
         check("empty JSON", "{}", false);
         check("null JSON", "null", false);
 
-        std::cout << "[FCM] PASS: 11 response cases.\n";
+        std::cout << "[FCM] PASS: 15 response cases.\n";
         return 0;
     }
     catch (const std::exception& error)
