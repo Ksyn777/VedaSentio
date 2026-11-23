@@ -7,12 +7,20 @@ import 'package:flutter/foundation.dart';
 import '../models/alarm_notification_target.dart';
 import 'auth_service.dart';
 import 'push_token_registration_coordinator.dart';
+import 'push_token_revocation_registry.dart';
 
 class VedaSentioPushNotificationService {
+  VedaSentioPushNotificationService({
+    Future<String?> Function()? currentTokenReader,
+  }) : _currentTokenReader = currentTokenReader;
+
+  final Future<String?> Function()? _currentTokenReader;
+
   StreamSubscription<RemoteMessage>?
       _notificationOpenedSubscription;
   PushTokenRegistrationCoordinator? _tokenRegistration;
   int _registrationGeneration = 0;
+  final PushTokenRevocationRegistry _revokePending = PushTokenRevocationRegistry();
 
   Future<void> startAlarmNotificationOpenHandling(
     void Function(
@@ -119,10 +127,15 @@ class VedaSentioPushNotificationService {
 
       final platform = _getMobilePlatformName();
       final registration = PushTokenRegistrationCoordinator(
-        (token) => authService.registerMobilePushNotificationToken(
-          token,
-          platform,
-        ),
+        (token) async {
+          // The backend may commit a POST even if the response times out.
+          // Treat every attempted token as potentially registered.
+          _revokePending.noteAttempt(token);
+          await authService.registerMobilePushNotificationToken(
+            token,
+            platform,
+          );
+        },
         onStreamError: () {
           debugPrint('[PUSH] Nie udało się odczytać nowego tokena FCM.');
         },
@@ -147,6 +160,54 @@ class VedaSentioPushNotificationService {
     _registrationGeneration++;
     _tokenRegistration?.stop();
     _tokenRegistration = null;
+  }
+
+  /// Returns true only if the backend confirmed revocation of every
+  /// successfully registered token from this session.
+  ///
+  /// Stops refreshes and waits for in-flight HTTP registrations before
+  /// revoking, so a late registration cannot overwrite a successful logout.
+  Future<bool> unregisterCurrentMobileDeviceForLogout(
+    AuthService authService,
+  ) async {
+    final previousRegistration = _tokenRegistration;
+    stopMobileTokenRegistration();
+    if (previousRegistration != null) {
+      await previousRegistration.idle;
+    }
+
+    // A token from an earlier app start may still be active in PostgreSQL
+    // even if this session never completed its initial registration.
+    var tokenLookupFailed = false;
+    if (_isSupportedMobilePlatform() || _currentTokenReader != null) {
+      try {
+        if (_currentTokenReader == null) {
+          await _initializeFirebaseIfNeeded();
+        }
+        final token = _currentTokenReader != null
+            ? await _currentTokenReader()
+            : await FirebaseMessaging.instance.getToken();
+        if (token == null || token.trim().isEmpty) {
+          tokenLookupFailed = true;
+        } else {
+          _revokePending.noteAttempt(token);
+        }
+      } catch (_) {
+        // No reassurance if the current token cannot be checked.
+        tokenLookupFailed = true;
+      }
+    }
+
+    final allRevoked = await _revokePending.revokeAll(
+      authService.unregisterMobilePushNotificationToken,
+    );
+    return allRevoked && !tokenLookupFailed;
+  }
+
+  /// Called only after local logout. Failed tokens must not be retried
+  /// under the JWT of another account.
+  void clearRegisteredTokenHistory() {
+    _revokePending.clear();
   }
 
   Future<void> _initializeFirebaseIfNeeded() async {
@@ -191,6 +252,7 @@ class VedaSentioPushNotificationService {
 
   void dispose() {
     stopMobileTokenRegistration();
+    clearRegisteredTokenHistory();
     final subscription = _notificationOpenedSubscription;
     _notificationOpenedSubscription = null;
     if (subscription != null) {

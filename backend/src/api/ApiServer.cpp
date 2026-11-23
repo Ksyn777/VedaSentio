@@ -1409,6 +1409,67 @@ void ApiServer::start(
         }
     );
 
+    // Only the current authenticated user may revoke this token. Returning
+    // the same result for an absent/foreign token prevents enumeration.
+    server.Delete(
+        "/api/mobile-devices/push-token",
+        [this](
+            const httplib::Request& request,
+            httplib::Response& response
+        )
+        {
+            const auto user = authenticated_user(
+                request, response, users_, jwt_
+            );
+            if (!user.has_value())
+                return;
+
+            if (request.body.size() > 16384)
+            {
+                send_json(response, {{"error", "Request body is too large."}}, 413);
+                return;
+            }
+
+            nlohmann::json body;
+            try
+            {
+                body = nlohmann::json::parse(request.body);
+            }
+            catch (...)
+            {
+                send_json(response, {{"error", "Invalid JSON body."}}, 400);
+                return;
+            }
+
+            if (!body.is_object() ||
+                !body.contains("fcm_token") ||
+                !body["fcm_token"].is_string())
+            {
+                send_json(response, {{"error", "FCM token is required."}}, 400);
+                return;
+            }
+
+            const std::string token = body["fcm_token"].get<std::string>();
+            if (token.empty() || token.size() > 8192)
+            {
+                send_json(response, {{"error", "Invalid FCM token."}}, 400);
+                return;
+            }
+
+            try
+            {
+                database_.deactivate_mobile_push_notification_token(user->id, token);
+                send_json(response, {{"status", "unregistered"}});
+            }
+            catch (const std::exception&)
+            {
+                // Do not log FCM tokens or database errors containing secrets.
+                std::cerr << "[API] Could not unregister mobile push token.\n";
+                send_json(response, {{"error", "Unable to unregister device."}}, 500);
+            }
+        }
+    );
+
     std::cout
         << "[API] Listening on http://"
         << host
