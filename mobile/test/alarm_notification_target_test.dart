@@ -1,107 +1,125 @@
+import 'package:vedasentio_mobile/models/home.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vedasentio_mobile/models/alarm_notification_target.dart';
-import 'package:vedasentio_mobile/models/home.dart';
-
-const allowed = Home(
-  id: 'home_ci',
-  name: 'Dom testowy',
-  role: 'caregiver',
-  createdAt: '2026-11-22T00:00:00Z',
-);
-const other = Home(
-  id: 'home_else',
-  name: 'Inny dom',
-  role: 'viewer',
-  createdAt: '2026-11-22T00:00:00Z',
-);
 
 void main() {
-  test('FCM string identifier targets the correct alarm and accessible home',
-      () {
-    final target = AlarmNotificationTarget.fromFirebaseData({
-      'home_id': ' home_ci ',
-      'alarm_id': '31',
-      'alarm_type': 'sos',
-    });
+  test(
+    'odczytuje home_id i alarm_id z danych Firebase',
+    () {
+      Map<String, dynamic> firebaseData = {
+        'home_id': 'home_001',
+        'alarm_id': '15',
+        'alarm_type': 'sos',
+      };
 
-    expect(target, isNotNull);
-    expect(target!.homeId, 'home_ci');
-    expect(target.alarmId, 31);
-    expect(target.accessibleHome([other, allowed]), same(allowed));
-    expect(target.accessibleHome([other]), isNull);
-  });
+      AlarmNotificationTarget? notificationTarget =
+          AlarmNotificationTarget.fromFirebaseData(
+        firebaseData,
+      );
 
-  test('FCM integer ID and whitespace-surrounded decimal string are valid',
-      () {
-    expect(
-      AlarmNotificationTarget.fromFirebaseData({
-        'home_id': 'home_ci',
-        'alarm_id': 2,
-      })?.alarmId,
-      2,
-    );
-    expect(
-      AlarmNotificationTarget.fromFirebaseData({
-        'home_id': 'home_ci',
-        'alarm_id': ' 00023 ',
-      })?.alarmId,
-      23,
-    );
-  });
-
-  test('missing, blank and wrong-type home_id are ignored', () {
-    for (final value in [null, '', '  ', 123, true, <String>[]]) {
       expect(
-        AlarmNotificationTarget.fromFirebaseData({
-          'home_id': value,
-          'alarm_id': '15',
-        }),
+        notificationTarget,
+        isNotNull,
+      );
+
+      expect(
+        notificationTarget!.homeId,
+        'home_001',
+      );
+
+      expect(
+        notificationTarget.alarmId,
+        15,
+      );
+    },
+  );
+
+  test(
+    'odrzuca powiadomienie bez identyfikatora alarmu',
+    () {
+      Map<String, dynamic> firebaseData = {
+        'home_id': 'home_001',
+      };
+
+      AlarmNotificationTarget? notificationTarget =
+          AlarmNotificationTarget.fromFirebaseData(
+        firebaseData,
+      );
+
+      expect(
+        notificationTarget,
         isNull,
       );
-    }
+    },
+  );
+  test('accepts numeric positive alarm ID and trimmed home ID', () {
+    final target = AlarmNotificationTarget.fromFirebaseData({
+      'home_id': ' home_test ',
+      'alarm_id': 17,
+    });
+    expect(target?.homeId, 'home_test');
+    expect(target?.alarmId, 17);
   });
 
-  test('alarm ID must be a positive, finite decimal integer', () {
-    for (final value in [
+  test('rejects invalid alarm IDs without throwing', () {
+    for (final invalid in [
       null,
-      '',
-      '  ',
-      '0',
       0,
-      -1,
-      '-2',
-      '+3',
-      '1abc',
-      '5.0',
-      1.5,
-      true,
-      '9999999999999999999999999999999999999',
+      -2,
+      3.5,
+      '',
+      '0',
+      '-1',
+      '12abc',
+      '1.0',
+      ' 12',
+      '+12',
+      '99999999999999999999999999999999999',
     ]) {
       expect(
         AlarmNotificationTarget.fromFirebaseData({
           'home_id': 'home_ci',
-          'alarm_id': value,
+          'alarm_id': invalid,
         }),
         isNull,
-        reason: 'Unexpected accepted alarm identifier: $value',
+        reason: 'Invalid ID: $invalid',
       );
     }
   });
 
-  test('notification cannot be routed to a home outside the session', () {
-    final target = AlarmNotificationTarget.fromFirebaseData({
-      'home_id': 'private_other_home',
-      'alarm_id': '81',
-    });
-    expect(target, isNotNull);
-    expect(target!.accessibleHome([allowed, other]), isNull);
+  test('rejects malformed home IDs and unsafe path separators', () {
+    for (final invalid in [
+      '',
+      ' ',
+      'home/other',
+      r'home\other',
+      'home\nother',
+      'x' * 129,
+      15,
+    ]) {
+      expect(
+        AlarmNotificationTarget.fromFirebaseData({
+          'home_id': invalid,
+          'alarm_id': '5',
+        }),
+        isNull,
+        reason: 'Invalid home: $invalid',
+      );
+    }
   });
 
-  test('alarm from viewer home may open for read-only details', () {
+  test('only a home in the active session can be opened', () {
     final target = AlarmNotificationTarget.fromFirebaseData({
-      'home_id': other.id,
-      'alarm_id': '81',
-    });
-    expect(target!.accessibleHome([other, allowed]), same(other));
+      'home_id': 'home_b',
+      'alarm_id': '5',
+    })!;
+    const homes = [
+      Home(id: 'home_a', name: 'A', role: 'viewer', createdAt: ''),
+      Home(id: 'home_b', name: 'B', role: 'caregiver', createdAt: ''),
+    ];
+    expect(target.findAccessibleHome(homes)?.id, 'home_b');
+    expect(target.findAccessibleHome([homes.first]), isNull);
+    expect(target.findAccessibleHome(const <Home>[]), isNull);
   });
+
 }

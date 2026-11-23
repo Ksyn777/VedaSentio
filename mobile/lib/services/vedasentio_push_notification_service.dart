@@ -6,12 +6,13 @@ import 'package:flutter/foundation.dart';
 
 import '../models/alarm_notification_target.dart';
 import 'auth_service.dart';
-import 'api_exception.dart';
-import 'push_token_registration.dart';
+import 'push_token_registration_coordinator.dart';
 
 class VedaSentioPushNotificationService {
   StreamSubscription<RemoteMessage>?
       _notificationOpenedSubscription;
+  PushTokenRegistrationCoordinator? _tokenRegistration;
+  int _registrationGeneration = 0;
 
   Future<void> startAlarmNotificationOpenHandling(
     void Function(
@@ -74,9 +75,9 @@ class VedaSentioPushNotificationService {
       handleAlarmNotificationOpened(
         initialNotificationTarget,
       );
-    } catch (error) {
+    } catch (_) {
       debugPrint(
-        '[PUSH] Nie udało się uruchomić obsługi kliknięcia powiadomienia: $error',
+        '[PUSH] Nie udało się uruchomić obsługi kliknięcia powiadomienia.',
       );
     }
   }
@@ -84,58 +85,68 @@ class VedaSentioPushNotificationService {
   Future<bool> registerCurrentMobileDevice(
     AuthService authService,
   ) async {
-    bool mobilePlatformIsSupported =
-        _isSupportedMobilePlatform();
+    // A previous session must never own this account's token refresh stream.
+    stopMobileTokenRegistration();
+    final generation = _registrationGeneration;
 
-    if (!mobilePlatformIsSupported) {
+    if (!_isSupportedMobilePlatform()) {
       return false;
     }
 
     try {
       await _initializeFirebaseIfNeeded();
+      if (generation != _registrationGeneration) {
+        return false;
+      }
 
-      FirebaseMessaging firebaseMessaging =
-          FirebaseMessaging.instance;
-
-      NotificationSettings notificationSettings =
-          await firebaseMessaging.requestPermission(
+      final firebaseMessaging = FirebaseMessaging.instance;
+      final settings = await firebaseMessaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
-
-      if (notificationSettings.authorizationStatus ==
-          AuthorizationStatus.denied) {
+      if (generation != _registrationGeneration ||
+          settings.authorizationStatus == AuthorizationStatus.denied) {
         return false;
       }
 
-      String? firebaseCloudMessagingToken =
-          await firebaseMessaging.getToken();
+      final currentToken = await firebaseMessaging.getToken();
+      if (generation != _registrationGeneration ||
+          currentToken == null ||
+          currentToken.trim().isEmpty) {
+        return false;
+      }
 
-      final registered = await PushTokenRegistration.register(
-        auth: authService,
-        fcmToken: firebaseCloudMessagingToken,
-        platform: _getMobilePlatformName(),
+      final platform = _getMobilePlatformName();
+      final registration = PushTokenRegistrationCoordinator(
+        (token) => authService.registerMobilePushNotificationToken(
+          token,
+          platform,
+        ),
+        onStreamError: () {
+          debugPrint('[PUSH] Nie udało się odczytać nowego tokena FCM.');
+        },
       );
+      _tokenRegistration = registration;
+      registration.start(firebaseMessaging.onTokenRefresh);
 
-      if (registered) {
+      final succeeded = await registration.register(currentToken);
+      if (succeeded) {
         debugPrint('[PUSH] Urządzenie mobilne zostało zarejestrowane.');
+      } else {
+        debugPrint('[PUSH] Rejestracja urządzenia nie powiodła się.');
       }
-      return registered;
-    } on ApiException catch (error) {
-      if (error.isUnauthorized) {
-        rethrow;
-      }
-      debugPrint(
-        '[PUSH] Rejestracja urządzenia nie powiodła się (HTTP lub sieć).',
-      );
-      return false;
-    } catch (error) {
-      debugPrint(
-        '[PUSH] Nie udało się zarejestrować urządzenia: $error',
-      );
+      return succeeded;
+    } catch (_) {
+      debugPrint('[PUSH] Nie udało się zarejestrować urządzenia.');
       return false;
     }
+  }
+
+  void stopMobileTokenRegistration() {
+    _registrationGeneration++;
+    _tokenRegistration?.stop();
+    _tokenRegistration = null;
   }
 
   Future<void> _initializeFirebaseIfNeeded() async {
@@ -179,7 +190,11 @@ class VedaSentioPushNotificationService {
   }
 
   void dispose() {
-    _notificationOpenedSubscription
-        ?.cancel();
+    stopMobileTokenRegistration();
+    final subscription = _notificationOpenedSubscription;
+    _notificationOpenedSubscription = null;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
   }
 }

@@ -7,6 +7,8 @@ project(VedaSentioBackend LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+enable_testing()
+
 find_package(PahoMqttCpp CONFIG REQUIRED)
 find_package(libpqxx CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
@@ -66,6 +68,22 @@ target_link_libraries(
     libpqxx::pqxx
 )
 
+add_library(vedasentio_event_parser STATIC
+    src/mqtt/SensorEventParser.cpp
+)
+
+target_include_directories(
+    vedasentio_event_parser
+    PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(
+    vedasentio_event_parser
+    PUBLIC
+    nlohmann_json::nlohmann_json
+)
+
 add_executable(
     vedasentio_backend
     src/main.cpp
@@ -100,6 +118,7 @@ target_link_libraries(
     vedasentio_security
     vedasentio_auth
     vedasentio_identity
+    vedasentio_event_parser
 )
 
 add_executable(
@@ -166,9 +185,35 @@ target_link_libraries(
     nlohmann_json::nlohmann_json
 )
 
-# Run pure FCM response parsing checks in the existing Windows CI CTest step.
-enable_testing()
+add_executable(
+    vedasentio_event_parser_test
+    tools/sensor_event_parser_test.cpp
+)
 
+target_link_libraries(
+    vedasentio_event_parser_test
+    PRIVATE
+    vedasentio_event_parser
+)
+
+add_test(
+    NAME vedasentio_event_parser_test
+    COMMAND vedasentio_event_parser_test
+)
+
+# Compile the real client against a test-only transport boundary. The backend
+# target continues to use the real Paho headers and libraries above.
+add_executable(vedasentio_mqtt_reconnect_test
+    tools/mqtt_reconnect_lifecycle_test.cpp
+    src/mqtt/MqttClient.cpp
+)
+target_include_directories(vedasentio_mqtt_reconnect_test BEFORE PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/mqtt_test_support
+)
+target_link_libraries(vedasentio_mqtt_reconnect_test PRIVATE vedasentio_event_parser)
+add_test(NAME vedasentio_mqtt_reconnect_test COMMAND vedasentio_mqtt_reconnect_test)
+
+# Validate production FCM error parsing without Firebase credentials or network.
 add_executable(
     vedasentio_fcm_response_test
     tools/fcm_response_parser_test.cpp

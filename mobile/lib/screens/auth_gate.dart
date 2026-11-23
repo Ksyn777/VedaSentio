@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/alarm_notification_target.dart';
-import '../models/home.dart';
 import '../models/session_data.dart';
-import '../services/api_exception.dart';
 import '../services/auth_service.dart';
 import '../services/vedasentio_push_notification_service.dart';
 import 'dashboard_screen.dart';
@@ -11,15 +9,7 @@ import 'home_details_screen.dart';
 import 'login_screen.dart';
 
 class AuthGate extends StatefulWidget {
-  const AuthGate({
-    this.authService,
-    this.pushNotificationService,
-    super.key,
-  });
-
-  // Optional dependencies make session recovery testable without Firebase.
-  final AuthService? authService;
-  final VedaSentioPushNotificationService? pushNotificationService;
+  const AuthGate({super.key});
 
   @override
   State<AuthGate> createState() =>
@@ -44,11 +34,10 @@ class _AuthGateState
   void initState() {
     super.initState();
 
-    _auth = widget.authService ?? AuthService();
+    _auth = AuthService();
 
     _pushNotificationService =
-        widget.pushNotificationService ??
-            VedaSentioPushNotificationService();
+        VedaSentioPushNotificationService();
 
     _initializeApplication();
   }
@@ -139,8 +128,9 @@ class _AuthGateState
       return;
     }
 
-    final Home? selectedHome =
-        notificationTarget.accessibleHome(currentSession.homes);
+    final selectedHome = notificationTarget.findAccessibleHome(
+      currentSession.homes,
+    );
 
     if (selectedHome == null) {
       _pendingAlarmNotificationTarget =
@@ -207,18 +197,15 @@ class _AuthGateState
 
   Future<void>
       _registerMobileDeviceForPushNotifications() async {
-    try {
-      await _pushNotificationService.registerCurrentMobileDevice(_auth);
-    } on ApiException catch (error) {
-      // The registration endpoint is protected. A 401 invalidates the
-      // current session even when the dashboard has already been shown.
-      if (error.isUnauthorized && mounted) {
-        await _logout();
-      }
-    }
+    await _pushNotificationService
+        .registerCurrentMobileDevice(
+      _auth,
+    );
   }
 
   Future<void> _logout() async {
+    // Stop token rotations before removing the authenticated session.
+    _pushNotificationService.stopMobileTokenRegistration();
     await _auth.logout();
 
     if (!mounted) {

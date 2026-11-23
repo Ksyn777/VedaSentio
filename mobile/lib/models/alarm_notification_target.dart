@@ -9,39 +9,31 @@ class AlarmNotificationTarget {
   final String homeId;
   final int alarmId;
 
+  static final RegExp _decimalDigits = RegExp(r'^[0-9]+$');
+
   static AlarmNotificationTarget? fromFirebaseData(
     Map<String, dynamic> firebaseData,
   ) {
-    String homeId = '';
+    final rawHomeId = firebaseData['home_id'];
+    final homeId = rawHomeId is String ? rawHomeId.trim() : '';
 
-    dynamic homeIdValue =
-        firebaseData['home_id'];
-
-    if (homeIdValue is String) {
-      homeId = homeIdValue.trim();
-    }
-
-    dynamic alarmIdValue =
-        firebaseData['alarm_id'];
-
+    final rawAlarmId = firebaseData['alarm_id'];
     int? alarmId;
-
-    if (alarmIdValue is int) {
-      alarmId = alarmIdValue;
+    if (rawAlarmId is int) {
+      alarmId = rawAlarmId;
+    } else if (rawAlarmId is String &&
+        _decimalDigits.hasMatch(rawAlarmId)) {
+      alarmId = int.tryParse(rawAlarmId);
     }
 
-    if (alarmIdValue is String) {
-      final digits = alarmIdValue.trim();
-      if (RegExp(r'^[0-9]+$').hasMatch(digits)) {
-        alarmId = int.tryParse(digits);
-      }
-    }
-
-    if (homeId.isEmpty) {
-      return null;
-    }
-
-    if (alarmId == null || alarmId <= 0) {
+    // Refuse malformed navigation targets before reaching the API.
+    if (homeId.isEmpty ||
+        homeId.length > 128 ||
+        homeId.contains('/') ||
+        homeId.contains('\\') ||
+        homeId.codeUnits.any((code) => code < 32 || code == 127) ||
+        alarmId == null ||
+        alarmId <= 0) {
       return null;
     }
 
@@ -51,8 +43,8 @@ class AlarmNotificationTarget {
     );
   }
 
-  // Client-side membership check; server-side JWT checks are still required.
-  Home? accessibleHome(Iterable<Home> homes) {
+  /// A notification never grants access to a home by itself.
+  Home? findAccessibleHome(Iterable<Home> homes) {
     for (final home in homes) {
       if (home.id == homeId) {
         return home;
