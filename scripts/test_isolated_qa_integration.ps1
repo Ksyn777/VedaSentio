@@ -55,6 +55,24 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'QA user creation failed.' }
     $login=Invoke-RestMethod -Method Post -Uri "$env:VEDASENTIO_API_BASE_URL/api/auth/login" -ContentType application/json -Body (@{email=$env:VEDASENTIO_NEW_USER_EMAIL;password=$env:VEDASENTIO_NEW_USER_PASSWORD}|ConvertTo-Json) -MaximumRedirection 0
     $global:VEDASENTIO_ACCESS_TOKEN=$login.access_token
+    $savedToken=$global:VEDASENTIO_ACCESS_TOKEN
+    $eventIdsBefore=@(Get-FloodRows $env:VEDASENTIO_API_BASE_URL 'events?limit=500' $savedToken | ForEach-Object { $_.id })
+    foreach ($negative in @('missing-jwt','invalid-jwt','foreign-qa','wrong-api')) {
+        $rejected=$false
+        try {
+            $global:VEDASENTIO_ACCESS_TOKEN=switch ($negative) { 'missing-jwt' {''} 'invalid-jwt' {'invalid-qa-token'} default {$savedToken} }
+            $candidateId=if ($negative -eq 'foreign-qa') { $foreignId } else { $testId }
+            $candidateUrl=if ($negative -eq 'wrong-api') { 'http://127.0.0.1:1' } else { $env:VEDASENTIO_API_BASE_URL }
+            & "$PSScriptRoot/smoke_flood_mqtt_api.ps1" -QaId $candidateId -ApiBaseUrl $candidateUrl -TimeoutSeconds 1
+        } catch {
+            $expected=switch ($negative) { 'missing-jwt' {'JWT missing'} 'invalid-jwt' {'401'} default {'mismatch'} }
+            $rejected=$_.Exception.Message -match $expected
+        } finally { $global:VEDASENTIO_ACCESS_TOKEN=$savedToken }
+        if (-not $rejected) { throw "Flood negative guard failed: $negative" }
+        Write-Host "[QA] PASS - flood rejected $negative before publication."
+    }
+    $eventIdsAfter=@(Get-FloodRows $env:VEDASENTIO_API_BASE_URL 'events?limit=500' $savedToken | ForEach-Object { $_.id })
+    if (($eventIdsBefore -join ',') -cne ($eventIdsAfter -join ',')) { throw 'Negative flood checks changed event history.' }
     & "$PSScriptRoot/smoke_door_mqtt_api.ps1" -State opened
     & "$PSScriptRoot/smoke_door_mqtt_api.ps1" -State closed
     & "$PSScriptRoot/smoke_flood_mqtt_api.ps1" -QaId $testId
