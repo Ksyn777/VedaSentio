@@ -229,3 +229,7 @@ add_test(
     NAME fcm_response_parser
     COMMAND vedasentio_fcm_response_test
 )
+
+add_executable(vedasentio_runtime_config_test tools/runtime_config_test.cpp)
+target_include_directories(vedasentio_runtime_config_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME runtime_config COMMAND vedasentio_runtime_config_test)
