@@ -39,4 +39,3 @@ struct RuntimeConfig
 
     std::string mqtt_address() const { return "tcp://127.0.0.1:" + std::to_string(mqtt_port); }
 };
-

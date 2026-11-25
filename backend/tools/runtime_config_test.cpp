@@ -20,4 +20,3 @@ int main()
     }
     std::cout << checks << " configuration assertions passed\n";
 }
-

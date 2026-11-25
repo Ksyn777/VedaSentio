@@ -20,8 +20,6 @@
 
 namespace
 {
-
-
 constexpr const char* MQTT_CLIENT_ID =
     "vedasentio_backend";
 
@@ -33,8 +31,6 @@ constexpr int MQTT_QOS =
 
 constexpr const char* API_HOST =
     "127.0.0.1";
-
-
 
 constexpr int DEVICE_STATUS_CHECK_SECONDS =
     10;
