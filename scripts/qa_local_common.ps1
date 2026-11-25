@@ -38,3 +38,35 @@ function Assert-QaLocalDocker {
     $os = docker info --format '{{.OSType}}'
     if ($LASTEXITCODE -ne 0 -or $os -ne 'linux') { throw 'Docker Desktop Linux engine is required.' }
 }
+
+function Assert-QaPortFree {
+    param([int]$Port)
+    $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Port)
+    try { $listener.Start() } catch { throw "QA port $Port is busy. No process was stopped." }
+    finally { $listener.Stop() }
+}
+
+function Get-QaStatePath {
+    param([string]$Id)
+    if ($Id -cnotmatch '^[a-f0-9]{12}$') { throw 'Invalid QA environment ID.' }
+    return Join-Path $env:LOCALAPPDATA "VedaSentio/qa/$Id/state.json"
+}
+
+function Assert-QaContainerIdentity {
+    param($Container, [string]$Id, [string]$Role, [string]$ContainerId)
+    if ($Container.Id -cne $ContainerId -or
+        $Container.Config.Labels.'org.vedasentio.qa' -cne $Id -or
+        $Container.Config.Labels.'org.vedasentio.qa.role' -cne $Role -or
+        $Container.Name -cne "/vsqa-$Id-$Role") {
+        throw 'Container ownership mismatch. Nothing will be stopped.'
+    }
+}
+
+function Assert-QaBackendIdentity {
+    param($Process, $Backend, [string]$Id)
+    if ($Process.ExecutablePath -ine $Backend.Path -or
+        $Process.CreationDate.ToUniversalTime().Ticks -ne $Backend.CreatedTicks -or
+        $Process.CommandLine -notmatch "--qa-instance=$Id(?:\s|$)") {
+        throw 'Backend ownership mismatch. Nothing will be stopped.'
+    }
+}

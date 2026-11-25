@@ -27,6 +27,29 @@ Get-ChildItem "$PSScriptRoot/*.ps1" | ForEach-Object {
     [Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
     if ($errors) { throw "Syntax error in $($_.Name): $errors" }
 }; $checks++
+$qaId='123456abcdef'; $containerId='a'*64
+$owned=[pscustomobject]@{Id=$containerId;Name="/vsqa-$qaId-db";Config=@{Labels=@{'org.vedasentio.qa'=$qaId;'org.vedasentio.qa.role'='db'}}}
+Assert-QaContainerIdentity $owned $qaId db $containerId; $checks++
+Assert-Rejected { Assert-QaContainerIdentity $owned 'abcdef123456' db $containerId }
+Assert-Rejected { Assert-QaContainerIdentity $owned $qaId mqtt $containerId }
+Assert-Rejected { Assert-QaContainerIdentity $owned $qaId db ('b'*64) }
+$timestamp=[DateTime]::UtcNow
+$process=[pscustomobject]@{ExecutablePath='C:\qa\backend.exe';CreationDate=$timestamp;CommandLine="C:\qa\backend.exe --qa-instance=$qaId"}
+$backend=@{Path=$process.ExecutablePath;CreatedTicks=$timestamp.Ticks} | ConvertTo-Json | ConvertFrom-Json
+Assert-QaBackendIdentity $process $backend $qaId; $checks++
+Assert-Rejected { Assert-QaBackendIdentity $process $backend 'abcdef123456' }
+$backend.CreatedTicks++
+Assert-Rejected { Assert-QaBackendIdentity $process $backend $qaId }
+$listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
+try {
+    $listener.Start(); $busyPort=$listener.LocalEndpoint.Port
+    Assert-Rejected { Assert-QaPortFree $busyPort }
+} finally { $listener.Stop() }
+$previousHost=$env:DOCKER_HOST
+try {
+    $env:DOCKER_HOST='tcp://remote.invalid:2375'
+    Assert-Rejected { Assert-QaLocalDocker }
+} finally { $env:DOCKER_HOST=$previousHost }
 if ($BackendPath) {
     $previous = $env:VEDASENTIO_API_PORT
     try {

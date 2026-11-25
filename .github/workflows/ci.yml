@@ -30,6 +30,11 @@ jobs:
         shell: pwsh
         run: |
           $scripts = @(
+            '.\scripts\start_isolated_qa.ps1',
+            '.\scripts\stop_isolated_qa.ps1',
+            '.\scripts\qa_local_common.ps1',
+            '.\scripts\test_isolated_qa.ps1',
+            '.\scripts\login_api_dev.ps1',
             '.\scripts\smoke_door_mqtt_api.ps1',
             '.\scripts\mqtt_test_door_contact.ps1',
             '.\scripts\mqtt_test_event.ps1'
@@ -98,6 +103,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
+
+      - name: Validate local QA configuration guards
+        shell: pwsh
+        run: ./scripts/test_isolated_qa.ps1 -BackendPath ./backend/build/Release/vedasentio_backend.exe
 
   flutter:
     name: Flutter
