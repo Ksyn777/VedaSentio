@@ -2,6 +2,15 @@
 # These tests are NOT evidence of MQTT/PostgreSQL/API E2E.
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/flood_smoke_common.ps1"
+# Exercise the actual API adapter against Invoke-RestMethod's non-enumerated array shape.
+function Invoke-RestMethod {
+    param($Uri,$Headers,$TimeoutSec,$MaximumRedirection)
+    return ,@([pscustomobject]@{id='door_001'},[pscustomobject]@{id='flood_001'})
+}
+$adapterRows=@(Get-FloodApi 'http://127.0.0.1:18080' 'devices' 'synthetic-unit-token')
+if ($adapterRows.Count -ne 2 -or $adapterRows[1].id -ne 'flood_001') { throw 'API adapter did not enumerate response rows.' }
+Remove-Item Function:Invoke-RestMethod
+Write-Host '[UNIT] PASS actual API adapter enumerates response array.'
 function Assert-FloodQaInstance {
     param($QaId,$ApiBaseUrl,$MqttContainer)
     if ($script:case -eq 'foreign-qa' -or $QaId -ne '123456abcdef') { throw 'QA identity mismatch.' }
@@ -42,7 +51,7 @@ function Send-FloodEvent {
     $event=[pscustomobject]@{id=($script:phase*100+1);home_id='home_001';device_id='flood_001';event_type=$EventType;value=$Value;device_timestamp=$Timestamp}
     if ($script:case -eq 'stale-event') {$event.device_timestamp='2000-01-01T00:00:00Z'}
     $script:events+= $event
-    if ($script:case -eq 'qos-duplicate') { $script:events+= $event.PSObject.Copy() }
+    if ($script:case -eq 'qos-duplicate') { $duplicate=$event.PSObject.Copy(); $duplicate.id++; $script:events+= $duplicate }
 }
 $checks=0
 $noPublication=@('missing-jwt','401','403','missing-device','inactive-device','existing-active','existing-acknowledged','backend-unavailable','foreign-qa')

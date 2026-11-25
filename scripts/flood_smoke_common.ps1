@@ -36,7 +36,8 @@ function Assert-FloodQaInstance {
 function Get-FloodApi {
     param([string]$BaseUrl, [string]$Path, [string]$Token)
     try {
-        return Invoke-RestMethod -Uri "$BaseUrl/api/homes/home_001/$Path" -Headers @{Authorization="Bearer $Token"} -TimeoutSec 3 -MaximumRedirection 0
+        $response=Invoke-RestMethod -Uri "$BaseUrl/api/homes/home_001/$Path" -Headers @{Authorization="Bearer $Token"} -TimeoutSec 3 -MaximumRedirection 0
+        foreach ($row in $response) { Write-Output $row }
     } catch {
         $status=if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 'unavailable' }
         throw "API request failed ($status)."
