@@ -63,3 +63,5 @@ if ($BackendPath) {
     } finally { $env:VEDASENTIO_API_PORT = $previous }
 }
 Write-Host "$checks QA checks passed"
+# Negative native-process cases intentionally return 1; successful suite returns 0 for CI.
+exit 0
