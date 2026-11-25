@@ -24,6 +24,10 @@ try {
     $testId=$global:VEDASENTIO_QA_ID
     if (-not $testId) { throw 'QA did not start.' }
     $state=Get-Content (Get-QaStatePath $testId) -Raw | ConvertFrom-Json
+    . "$PSScriptRoot/flood_smoke_common.ps1"
+    Assert-FloodQaInstance $testId $env:VEDASENTIO_API_BASE_URL $env:VEDASENTIO_TEST_MQTT_CONTAINER
+    Get-Content "$PSScriptRoot/../database/qa/flood_seed.sql" -Raw | docker exec -i $state.Db psql -U $env:VEDASENTIO_DB_USER -d $env:VEDASENTIO_DB_NAME -v ON_ERROR_STOP=1 *> $null
+    if ($LASTEXITCODE) { throw 'Isolated flood QA seed failed.' }
     $stateJson=$state | ConvertTo-Json -Depth 6
     foreach ($name in @('VEDASENTIO_DB_PASSWORD','VEDASENTIO_MQTT_PASSWORD','VEDASENTIO_JWT_SIGNING_KEY_B64','VEDASENTIO_DATA_ENCRYPTION_KEY_B64','VEDASENTIO_LOOKUP_HMAC_KEY_B64')) {
         if ($stateJson.Contains([Environment]::GetEnvironmentVariable($name))) { throw 'Secret leaked to state.' }
@@ -51,10 +55,30 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'QA user creation failed.' }
     $login=Invoke-RestMethod -Method Post -Uri "$env:VEDASENTIO_API_BASE_URL/api/auth/login" -ContentType application/json -Body (@{email=$env:VEDASENTIO_NEW_USER_EMAIL;password=$env:VEDASENTIO_NEW_USER_PASSWORD}|ConvertTo-Json) -MaximumRedirection 0
     $global:VEDASENTIO_ACCESS_TOKEN=$login.access_token
+    $savedToken=$global:VEDASENTIO_ACCESS_TOKEN
+    $eventIdsBefore=@(Get-FloodRows $env:VEDASENTIO_API_BASE_URL 'events?limit=500' $savedToken | ForEach-Object { $_.id })
+    foreach ($negative in @('missing-jwt','invalid-jwt','foreign-qa','wrong-api')) {
+        $rejected=$false
+        try {
+            $global:VEDASENTIO_ACCESS_TOKEN=switch ($negative) { 'missing-jwt' {''} 'invalid-jwt' {'invalid-qa-token'} default {$savedToken} }
+            $candidateId=if ($negative -eq 'foreign-qa') { $foreignId } else { $testId }
+            $candidateUrl=if ($negative -eq 'wrong-api') { 'http://127.0.0.1:1' } else { $env:VEDASENTIO_API_BASE_URL }
+            & "$PSScriptRoot/smoke_flood_mqtt_api.ps1" -QaId $candidateId -ApiBaseUrl $candidateUrl -TimeoutSeconds 1
+        } catch {
+            $expected=switch ($negative) { 'missing-jwt' {'JWT missing'} 'invalid-jwt' {'401'} default {'mismatch'} }
+            $rejected=$_.Exception.Message -match $expected
+        } finally { $global:VEDASENTIO_ACCESS_TOKEN=$savedToken }
+        if (-not $rejected) { throw "Flood negative guard failed: $negative" }
+        Write-Host "[QA] PASS - flood rejected $negative before publication."
+    }
+    $eventIdsAfter=@(Get-FloodRows $env:VEDASENTIO_API_BASE_URL 'events?limit=500' $savedToken | ForEach-Object { $_.id })
+    if (($eventIdsBefore -join ',') -cne ($eventIdsAfter -join ',')) { throw 'Negative flood checks changed event history.' }
     & "$PSScriptRoot/smoke_door_mqtt_api.ps1" -State opened
     & "$PSScriptRoot/smoke_door_mqtt_api.ps1" -State closed
+    & "$PSScriptRoot/smoke_flood_mqtt_api.ps1" -QaId $testId
     & "$binaryDir/vedasentio_alarm_flow_test.exe"
     if ($LASTEXITCODE -ne 0) { throw 'Alarm regression failed.' }
+    Write-Host '[QA] PASS - istniejaca regresja alarmow.'
 
 } finally {
     if (-not $testId) { $testId=$global:VEDASENTIO_QA_ID }
@@ -62,4 +86,4 @@ try {
     if ((Get-ExistingInventory) -cne $inventory) { throw 'Existing Docker configuration or start times changed.' }
     Write-Host '[QA] Existing container configuration, mounts and start times unchanged.'
 }
-Write-Host '[QA] PASS: authenticated API observed both fresh door events; alarm regression, occupied port, state secrecy and foreign ownership checks passed.'
+Write-Host '[QA] PASS: authenticated API observed both fresh door events and the complete flood cycle; alarm regression, occupied port, state secrecy and foreign ownership checks passed.'

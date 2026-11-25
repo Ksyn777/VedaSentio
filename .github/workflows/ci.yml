@@ -108,6 +108,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test_isolated_qa.ps1 -BackendPath ./backend/build/Release/vedasentio_backend.exe
 
+      - name: Validate flood smoke scenarios
+        shell: pwsh
+        run: ./scripts/test_flood_smoke.ps1
+
   flutter:
     name: Flutter
     runs-on: ubuntu-latest
