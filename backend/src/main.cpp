@@ -1,5 +1,6 @@
 #include "alarms/AlarmRepository.h"
 #include "api/ApiServer.h"
+#include "config/RuntimeConfig.h"
 #include "auth/JwtService.h"
 #include "database/Database.h"
 #include "mqtt/MqttClient.h"
@@ -19,9 +20,6 @@
 
 namespace
 {
-constexpr const char* MQTT_SERVER_ADDRESS =
-    "tcp://127.0.0.1:1883";
-
 constexpr const char* MQTT_CLIENT_ID =
     "vedasentio_backend";
 
@@ -33,9 +31,6 @@ constexpr int MQTT_QOS =
 
 constexpr const char* API_HOST =
     "127.0.0.1";
-
-constexpr int API_PORT =
-    8080;
 
 constexpr int DEVICE_STATUS_CHECK_SECONDS =
     10;
@@ -257,6 +252,8 @@ int main()
 {
     try
     {
+        const RuntimeConfig config = RuntimeConfig::from_environment();
+
         std::cout
             << "[VedaSentio] Backend starting...\n";
 
@@ -336,11 +333,11 @@ int main()
         );
 
         std::thread api_thread(
-            [&api_server]()
+            [&api_server, &config]()
             {
                 api_server.start(
                     API_HOST,
-                    API_PORT
+                    config.api_port
                 );
             }
         );
@@ -348,7 +345,7 @@ int main()
         api_thread.detach();
 
         MqttClient mqtt_client(
-            MQTT_SERVER_ADDRESS,
+            config.mqtt_address(),
             MQTT_CLIENT_ID,
             MQTT_TOPIC_FILTER,
             MQTT_QOS,

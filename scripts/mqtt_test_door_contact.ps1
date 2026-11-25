@@ -1,9 +1,10 @@
-﻿param(
+param(
     [Parameter(Mandatory = $true)]
     [ValidateSet("opened", "closed")]
     [string]$State,
 
-    [string]$TimestampUtc = ""
+    [string]$TimestampUtc = "",
+    [string]$MqttContainer = $env:VEDASENTIO_TEST_MQTT_CONTAINER
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,4 +25,5 @@ else {
     -ValueJson $valueJson `
     -HomeId "home_001" `
     -DeviceId "door_001" `
-    -TimestampUtc $TimestampUtc
+    -TimestampUtc $TimestampUtc `
+    -MqttContainer $MqttContainer
