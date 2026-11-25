@@ -31,6 +31,8 @@ ESP32 / testowy publikator
 
 Wymagane: **Git, PowerShell, Docker Desktop**, Visual Studio z narzędziami C++ i CMake, vcpkg oraz Flutter SDK (dla aplikacji mobilnej); do testów Androida także emulator lub telefon z `adb`. Nie jest potrzebny fizyczny ESP32. Komendy uruchamiaj z **katalogu głównego repozytorium**, w osobnej kopii developerskiej — nie na komputerze produkcyjnym.
 
+Osobny zestaw obok działających usług: [izolowane QA na jednym Windows 11](docs/qa/isolated-software-demo.md).
+
 ### 1. Pobierz repozytorium i ustaw lokalną konfigurację
 
 ```powershell
