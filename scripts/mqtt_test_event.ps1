@@ -13,10 +13,14 @@ param(
     [int]$Qos = 1,
 
     # Optional timestamp for deterministic local smoke tests.
-    [string]$TimestampUtc = ""
+    [string]$TimestampUtc = "",
+    [string]$MqttContainer = $env:VEDASENTIO_TEST_MQTT_CONTAINER
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/qa_local_common.ps1"
+$MqttContainer = Get-QaMqttContainer $MqttContainer
+Assert-QaLocalDocker
 
 function Get-MqttPassword {
     if (
@@ -59,15 +63,15 @@ if ([string]::IsNullOrWhiteSpace($mqttUser)) {
 }
 
 $runningContainer = docker ps `
-    --filter "name=^/vedasentio-mqtt$" `
+    --filter "name=^/$([regex]::Escape($MqttContainer))`$" `
     --format "{{.Names}}"
 
 if ($LASTEXITCODE -ne 0) {
     throw "Nie udalo sie sprawdzic Docker."
 }
 
-if ($runningContainer -ne "vedasentio-mqtt") {
-    throw "Kontener vedasentio-mqtt nie jest uruchomiony."
+if ($runningContainer -ne $MqttContainer) {
+    throw "Wybrany kontener MQTT nie jest uruchomiony."
 }
 
 try {
@@ -117,7 +121,7 @@ Write-Host "[MQTT-TEST] Timestamp:  $timestamp"
 Write-Host "[MQTT-TEST] Password is not printed."
 
 $payload |
-    docker exec -i vedasentio-mqtt `
+    docker exec -i $MqttContainer `
         mosquitto_pub `
         -h 127.0.0.1 `
         -p 1883 `

@@ -1,3 +1,6 @@
+param([string]$ApiBaseUrl = $env:VEDASENTIO_API_BASE_URL)
+. "$PSScriptRoot/qa_local_common.ps1"
+$ApiBaseUrl = Get-QaApiBaseUrl $ApiBaseUrl
 $ErrorActionPreference = "Stop"
 
 $email = Read-Host "E-mail"
@@ -18,8 +21,8 @@ try {
     } | ConvertTo-Json
 
     $login = Invoke-RestMethod `
-        -Method Post `
-        -Uri "http://127.0.0.1:8080/api/auth/login" `
+        -Method Post -MaximumRedirection 0 `
+        -Uri "$ApiBaseUrl/api/auth/login" `
         -ContentType "application/json" `
         -Body $body
 
